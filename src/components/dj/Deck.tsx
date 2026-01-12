@@ -8,13 +8,16 @@ import { Slider } from '@/components/ui/slider';
 interface DeckProps {
   deckId: 'A' | 'B';
   containerId: string;
-  deckState: DeckState;
-  setDeckState: (state: DeckState) => void;
+  deckState: DeckState | undefined;          // Puede llegar undefined
+  setDeckState?: (state: DeckState) => void; // Opcional para prevenir crashes
   volume: number;
 }
 
 export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setDeckState, volume }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Si deckState o setDeckState no existen, no renderizamos nada
+  if (!deckState || !setDeckState) return null;
 
   // Actualizar volumen cuando cambia prop
   useEffect(() => {
@@ -57,7 +60,7 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
         ref={audioRef}
         id={containerId}
         onTimeUpdate={onTimeUpdate}
-        src="" // Aquí podés poner la url de la canción
+        src="" // Aquí ponés la URL de la canción
       />
 
       {/* Controles */}
@@ -84,4 +87,3 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
     </div>
   );
 };
-
