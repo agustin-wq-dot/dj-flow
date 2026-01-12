@@ -1,4 +1,3 @@
-// src/components/Deck.tsx
 import React, { useEffect, useRef } from 'react';
 import { DeckState } from '@/types/dj';
 import { Button } from '@/components/ui/button';
@@ -8,53 +7,40 @@ import { Slider } from '@/components/ui/slider';
 interface DeckProps {
   deckId: 'A' | 'B';
   containerId: string;
-  deckState?: DeckState;          // Puede llegar undefined
-  setDeckState?: (state: DeckState) => void; // Opcional
+  deckState?: DeckState;
+  setDeckState?: (state: DeckState) => void;
   volume: number;
 }
 
 export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setDeckState, volume }) => {
-  // Valores seguros por defecto
-  const safeDeckState: DeckState = deckState || {
-    isPlaying: false,
-    volume: 1,
-    position: 0,
-  };
-
-  const safeSetDeckState = setDeckState || (() => {});
+  if (!deckState || !setDeckState) return <div>Loading deck {deckId}...</div>;
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Actualizar volumen según prop
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
+    if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
-  // Play / Pause
   const togglePlay = () => {
     if (!audioRef.current) return;
-    if (safeDeckState.isPlaying) {
+    if (deckState.isPlaying) {
       audioRef.current.pause();
-      safeSetDeckState({ ...safeDeckState, isPlaying: false });
+      setDeckState({ ...deckState, isPlaying: false });
     } else {
       audioRef.current.play();
-      safeSetDeckState({ ...safeDeckState, isPlaying: true });
+      setDeckState({ ...deckState, isPlaying: true });
     }
   };
 
-  // Reiniciar
   const restart = () => {
     if (!audioRef.current) return;
     audioRef.current.currentTime = 0;
-    safeSetDeckState({ ...safeDeckState, position: 0 });
+    setDeckState({ ...deckState, position: 0 });
   };
 
-  // Actualizar posición
   const onTimeUpdate = () => {
     if (!audioRef.current) return;
-    safeSetDeckState({ ...safeDeckState, position: audioRef.current.currentTime });
+    setDeckState({ ...deckState, position: audioRef.current.currentTime });
   };
 
   return (
@@ -65,12 +51,12 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
         ref={audioRef}
         id={containerId}
         onTimeUpdate={onTimeUpdate}
-        src="" // Poner URL real de la canción
+        src="" // poner URL real
       />
 
       <div className="flex gap-2">
         <Button onClick={togglePlay}>
-          {safeDeckState.isPlaying ? <Pause size={16} /> : <Play size={16} />}
+          {deckState.isPlaying ? <Pause size={16} /> : <Play size={16} />}
         </Button>
         <Button onClick={restart}>
           <RotateCcw size={16} />
@@ -78,10 +64,10 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
       </div>
 
       <Slider
-        value={safeDeckState.position}
+        value={deckState.position}
         onValueChange={(val) => {
           if (audioRef.current) audioRef.current.currentTime = val;
-          safeSetDeckState({ ...safeDeckState, position: val });
+          setDeckState({ ...deckState, position: val });
         }}
         min={0}
         max={audioRef.current?.duration || 0}
@@ -90,3 +76,4 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
     </div>
   );
 };
+
