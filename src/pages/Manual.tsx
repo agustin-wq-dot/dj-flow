@@ -19,6 +19,7 @@ export default function Manual() {
 
   const [crossfader, setCrossfader] = useState(0.5);
 
+  // Calcula volumen relativo según crossfader
   const computeVolume = (deck: 'A' | 'B') => {
     if (deck === 'A') return (1 - crossfader) * deckA.volume;
     return crossfader * deckB.volume;
