@@ -1,9 +1,10 @@
 /**
  * useAutoPlayer
  *
- * Modo automático desactivado temporalmente.
- * Este hook existe solo para mantener compatibilidad
- * sin romper el build ni crear players invisibles.
+ * Modo automático DESACTIVADO.
+ * Este archivo existe solo para que el proyecto buildée.
+ * NO crea players.
+ * NO usa YouTube.
  */
 
 export function useAutoPlayer() {
