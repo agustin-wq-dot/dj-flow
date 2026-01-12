@@ -10,13 +10,16 @@ interface DeckProps {
   containerId: string;
   deckState?: DeckState;
   setDeckState?: (state: DeckState) => void;
-  volume: number;
+  volume?: number;
 }
 
-export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setDeckState, volume }) => {
-  // 🔹 Evitamos renderizar si aún no llegó el estado
-  if (!deckState || !setDeckState) return <div>Loading deck {deckId}...</div>;
-
+export const Deck: React.FC<DeckProps> = ({
+  deckId,
+  containerId,
+  deckState = { isPlaying: false, position: 0, volume: 1 },
+  setDeckState = () => {},
+  volume = 1,
+}) => {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -25,7 +28,7 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
 
   const togglePlay = () => {
     if (!audioRef.current) return;
-    if (deckState.isPlaying) {
+    if (deckState?.isPlaying) {
       audioRef.current.pause();
       setDeckState({ ...deckState, isPlaying: false });
     } else {
@@ -58,7 +61,7 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
 
       <div className="flex gap-2">
         <Button onClick={togglePlay}>
-          {deckState.isPlaying ? <Pause size={16} /> : <Play size={16} />}
+          {deckState?.isPlaying ? <Pause size={16} /> : <Play size={16} />}
         </Button>
         <Button onClick={restart}>
           <RotateCcw size={16} />
@@ -66,7 +69,7 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
       </div>
 
       <Slider
-        value={deckState.position}
+        value={deckState?.position || 0}
         onValueChange={(val) => {
           if (audioRef.current) audioRef.current.currentTime = val;
           setDeckState({ ...deckState, position: val });
