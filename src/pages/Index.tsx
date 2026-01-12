@@ -1,14 +1,26 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import React, { useState } from 'react';
+import { Track } from '@/types/dj';
+import { PlaylistEditor } from '@/components/dj/PlaylistEditor';
+import { DJModeView } from '@/components/dj/DJModeView';
 
 const Index = () => {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
-  );
+  const [mode, setMode] = useState<'editor' | 'dj'>('editor');
+  const [tracks, setTracks] = useState<Track[]>([]);
+
+  const handleStartDJ = (playlistTracks: Track[]) => {
+    setTracks(playlistTracks);
+    setMode('dj');
+  };
+
+  const handleBack = () => {
+    setMode('editor');
+  };
+
+  if (mode === 'dj') {
+    return <DJModeView initialTracks={tracks} onBack={handleBack} />;
+  }
+
+  return <PlaylistEditor onStartDJ={handleStartDJ} />;
 };
 
 export default Index;
