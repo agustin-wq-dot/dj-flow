@@ -1,3 +1,4 @@
+// src/components/Deck.tsx
 import React, { useEffect, useRef } from 'react';
 import { DeckState } from '@/types/dj';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ interface DeckProps {
 }
 
 export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setDeckState, volume }) => {
-  // 🔹 Render seguro si los props aún no llegaron
+  // 🔹 Evitamos renderizar si aún no llegó el estado
   if (!deckState || !setDeckState) return <div>Loading deck {deckId}...</div>;
 
   const audioRef = useRef<HTMLAudioElement>(null);
