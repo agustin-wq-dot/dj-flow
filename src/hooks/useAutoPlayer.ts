@@ -1,29 +1,18 @@
 /**
  * useAutoPlayer
  *
- * Modo automático DESACTIVADO TEMPORALMENTE
- * Este hook existe solo para no romper imports.
- * La lógica real se va a reimplementar correctamente
- * con decks renderizados en DOM.
+ * Modo automático desactivado temporalmente.
+ * Este hook existe solo para mantener compatibilidad
+ * sin romper el build ni crear players invisibles.
  */
 
-export type AutoPlayerStatus = 'idle' | 'playing' | 'transition';
-
-export interface UseAutoPlayerResult {
-  status: AutoPlayerStatus;
-  play: () => void;
-  stop: () => void;
-}
-
-export function useAutoPlayer(): UseAutoPlayerResult {
+export function useAutoPlayer() {
   return {
-    status: 'idle',
     play: () => {
-      console.warn('[AutoPlayer] play() desactivado');
+      console.warn("[AutoPlayer] play() desactivado");
     },
     stop: () => {
-      console.warn('[AutoPlayer] stop() desactivado');
+      console.warn("[AutoPlayer] stop() desactivado");
     },
   };
 }
-
