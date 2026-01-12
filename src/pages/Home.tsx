@@ -1,47 +1,38 @@
-import { usePlayerContext } from "@/context/PlayerContext";
 import { useNavigate } from "react-router-dom";
-import { Track } from "@/types/Track";
+import { Button } from "@/components/ui/button";
+import { usePlayerContext } from "@/context/PlayerContext";
 
 export default function Home() {
-  const { playlist, setPlaylist, startAuto, setManual } = usePlayerContext();
   const navigate = useNavigate();
-
-  function loadDemoPlaylist() {
-    const tracks: Track[] = [
-      { videoId: "VIDEO_ID_1", title: "Track 1", bpm: 124 },
-      { videoId: "VIDEO_ID_2", title: "Track 2", bpm: 126 },
-      { videoId: "VIDEO_ID_3", title: "Track 3", bpm: 125 },
-    ];
-    setPlaylist(tracks);
-  }
+  const { startAuto, setManual } = usePlayerContext();
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>DJ Flow</h1>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-8">
+      <h1 className="text-3xl font-bold">DJ Flow</h1>
 
-      <button onClick={loadDemoPlaylist}>
-        Cargar playlist
-      </button>
+      <div className="flex gap-6">
+        <Button
+          size="lg"
+          onClick={() => {
+            startAuto();
+            navigate("/auto");
+          }}
+        >
+          ▶ Modo Automático
+        </Button>
 
-      <br /><br />
-
-      <button
-        disabled={!playlist.length}
-        onClick={startAuto}
-      >
-        ▶ Play Automático
-      </button>
-
-      <br /><br />
-
-      <button
-        onClick={() => {
-          setManual();
-          navigate("/manual");
-        }}
-      >
-        🎛 Modo Manual
-      </button>
+        <Button
+          size="lg"
+          variant="outline"
+          onClick={() => {
+            setManual();
+            navigate("/manual");
+          }}
+        >
+          🎛️ Modo Manual
+        </Button>
+      </div>
     </div>
   );
 }
+
