@@ -5,7 +5,6 @@ import { DeckState } from '@/types/dj';
 import { Slider } from '@/components/ui/slider';
 
 export default function Manual() {
-  // Estado de cada deck
   const [deckA, setDeckA] = useState<DeckState>({
     isPlaying: false,
     volume: 1,
@@ -18,13 +17,11 @@ export default function Manual() {
     position: 0,
   });
 
-  // Estado del crossfader (0 = todo deck A, 1 = todo deck B)
   const [crossfader, setCrossfader] = useState(0.5);
 
-  // Función para actualizar volumen relativo de cada deck según crossfader
   const computeVolume = (deck: 'A' | 'B') => {
     if (deck === 'A') return (1 - crossfader) * deckA.volume;
-    else return crossfader * deckB.volume;
+    return crossfader * deckB.volume;
   };
 
   return (
@@ -32,21 +29,18 @@ export default function Manual() {
       <h1 className="text-2xl font-bold">Manual DJ</h1>
 
       <div className="flex gap-8">
-        {/* Deck A */}
         <Deck
           deckId="A"
           containerId="deck-a"
-          state={deckA}
-          setState={setDeckA}
+          deckState={deckA}
+          setDeckState={setDeckA}
           volume={computeVolume('A')}
         />
-
-        {/* Deck B */}
         <Deck
           deckId="B"
           containerId="deck-b"
-          state={deckB}
-          setState={setDeckB}
+          deckState={deckB}
+          setDeckState={setDeckB}
           volume={computeVolume('B')}
         />
       </div>
@@ -56,7 +50,7 @@ export default function Manual() {
         <h2 className="mb-2 font-semibold">Crossfader</h2>
         <Slider
           value={crossfader}
-          onValueChange={(val) => setCrossfader(val)}
+          onValueChange={setCrossfader}
           step={0.01}
           min={0}
           max={1}
