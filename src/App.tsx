@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { PlayerProvider } from "@/context/PlayerContext";
 import Home from "@/pages/Home";
 import Manual from "@/pages/Manual";
-import NotFound from "@/pages/NotFound";
+import Auto from "@/pages/Auto";
 
 export default function App() {
   return (
@@ -11,7 +11,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/manual" element={<Manual />} />
-          <Route path="*" element={<NotFound />} />
+          <Route path="/auto" element={<Auto />} />
         </Routes>
       </BrowserRouter>
     </PlayerProvider>
