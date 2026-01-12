@@ -1,59 +1,41 @@
-import React, { createContext, useContext, useState } from "react";
-import { Track } from "@/types/Track";
+import React, { createContext, useContext, useState } from 'react';
+import { Track } from '@/types/dj';
 
-export type PlayerMode = "auto" | "manual";
+export type PlayerMode = 'manual' | 'auto';
 
-interface PlayerContextType {
-  playlist: Track[];
+interface PlayerContextState {
   mode: PlayerMode;
-  autoPlaying: boolean;
-
-  setPlaylist(tracks: Track[]): void;
-  startAuto(): void;
-  stopAuto(): void;
-  setManual(): void;
+  setMode: (mode: PlayerMode) => void;
+  playlist: Track[];
+  setPlaylist: (tracks: Track[]) => void;
 }
 
-const PlayerContext = createContext<PlayerContextType | null>(null);
+const PlayerContext = createContext<PlayerContextState | null>(null);
 
-export function PlayerProvider({ children }: { children: React.ReactNode }) {
+export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [mode, setMode] = useState<PlayerMode>('manual');
   const [playlist, setPlaylist] = useState<Track[]>([]);
-  const [mode, setMode] = useState<PlayerMode>("manual");
-  const [autoPlaying, setAutoPlaying] = useState(false);
-
-  function startAuto() {
-    setMode("auto");
-    setAutoPlaying(true);
-  }
-
-  function stopAuto() {
-    setAutoPlaying(false);
-  }
-
-  function setManual() {
-    setMode("manual");
-    setAutoPlaying(false);
-  }
 
   return (
     <PlayerContext.Provider
       value={{
-        playlist,
         mode,
-        autoPlaying,
+        setMode,
+        playlist,
         setPlaylist,
-        startAuto,
-        stopAuto,
-        setManual,
       }}
     >
       {children}
     </PlayerContext.Provider>
   );
-}
+};
 
-export function usePlayerContext() {
+export const usePlayerContext = () => {
   const ctx = useContext(PlayerContext);
-  if (!ctx) throw new Error("usePlayerContext must be used inside PlayerProvider");
+  if (!ctx) {
+    throw new Error('usePlayerContext must be used within PlayerProvider');
+  }
   return ctx;
-}
+};
