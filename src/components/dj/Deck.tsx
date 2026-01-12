@@ -13,6 +13,7 @@ interface DeckProps {
 }
 
 export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setDeckState, volume }) => {
+  // 🔹 Render seguro si los props aún no llegaron
   if (!deckState || !setDeckState) return <div>Loading deck {deckId}...</div>;
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -51,7 +52,7 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
         ref={audioRef}
         id={containerId}
         onTimeUpdate={onTimeUpdate}
-        src="" // poner URL real
+        src="" // 🔹 Poner URL real de canción
       />
 
       <div className="flex gap-2">
@@ -76,4 +77,3 @@ export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setD
     </div>
   );
 };
-
