@@ -1,4 +1,4 @@
-import Decks from "@/components/Decks";
+import Decks from "@/components/dj/Decks";
 
 export default function Manual() {
   return (
