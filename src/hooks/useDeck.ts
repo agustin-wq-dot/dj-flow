@@ -1,37 +1,20 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useYouTubePlayer } from './useYouTubePlayer';
 import { DeckState, Track, LoopSettings } from '@/types/dj';
 
 interface UseDeckOptions {
   deckId: 'A' | 'B';
   onStateChange: (state: Partial<DeckState>) => void;
-  onEnded: () => void;
 }
 
-export const useDeck = ({ deckId, onStateChange, onEnded }: UseDeckOptions) => {
+export const useDeck = ({ deckId, onStateChange }: UseDeckOptions) => {
   const containerId = `youtube-player-${deckId}`;
   const loopRef = useRef<LoopSettings | null>(null);
   const currentTimeRef = useRef(0);
 
-  const handleTimeUpdate = useCallback((time: number) => {
-    currentTimeRef.current = time;
-    onStateChange({ currentTime: time });
-
-    // Handle loop
-    if (loopRef.current && time >= loopRef.current.end) {
-      seekTo(loopRef.current.start);
-    }
-  }, [onStateChange]);
-
-  const handleStateChange = useCallback((state: number) => {
-    // 1 = playing, 2 = paused
-    onStateChange({ isPlaying: state === 1 });
-  }, [onStateChange]);
-
   const {
     isReady,
     loadVideo,
-    cueVideo,
     play,
     pause,
     seekTo,
@@ -39,22 +22,31 @@ export const useDeck = ({ deckId, onStateChange, onEnded }: UseDeckOptions) => {
     setPlaybackRate,
     getDuration,
     getCurrentTime,
-  } = useYouTubePlayer(containerId, {
-    onTimeUpdate: handleTimeUpdate,
-    onStateChange: handleStateChange,
-    onEnded,
+  } = useYouTubePlayer({
+    containerId,
+    onTimeUpdate: (time) => {
+      currentTimeRef.current = time;
+      onStateChange({ currentTime: time });
+
+      // Loop manual (permitido)
+      if (loopRef.current && time >= loopRef.current.end) {
+        seekTo(loopRef.current.start);
+      }
+    },
+    onReady: () => onStateChange({ isReady: true }),
+    onPlay: () => onStateChange({ isPlaying: true }),
+    onPause: () => onStateChange({ isPlaying: false }),
   });
 
-  const loadTrack = useCallback((track: Track, autoplay = false) => {
-    loopRef.current = null;
-    onStateChange({ track, loop: null, currentTime: 0 });
-    
-    if (autoplay) {
-      loadVideo(track.videoId);
-    } else {
-      cueVideo(track.videoId);
-    }
-  }, [loadVideo, cueVideo, onStateChange]);
+  const loadTrack = useCallback((track: Track) => {
+    loadVideo(track.videoId);
+    onStateChange({
+      track,
+      currentTime: 0,
+      duration: 0,
+      isPlaying: false,
+    });
+  }, [loadVideo, onStateChange]);
 
   const toggleLoop = useCallback((duration: 4 | 8 | 16) => {
     if (loopRef.current?.duration === duration) {
@@ -72,16 +64,6 @@ export const useDeck = ({ deckId, onStateChange, onEnded }: UseDeckOptions) => {
     }
   }, [getCurrentTime, onStateChange]);
 
-  const updateVolume = useCallback((volume: number) => {
-    setVolume(volume);
-    onStateChange({ volume });
-  }, [setVolume, onStateChange]);
-
-  const updatePlaybackRate = useCallback((rate: number) => {
-    setPlaybackRate(rate);
-    onStateChange({ playbackRate: rate });
-  }, [setPlaybackRate, onStateChange]);
-
   return {
     containerId,
     isReady,
@@ -89,8 +71,8 @@ export const useDeck = ({ deckId, onStateChange, onEnded }: UseDeckOptions) => {
     play,
     pause,
     seekTo,
-    setVolume: updateVolume,
-    setPlaybackRate: updatePlaybackRate,
+    setVolume,
+    setPlaybackRate,
     toggleLoop,
     getDuration,
     getCurrentTime,
