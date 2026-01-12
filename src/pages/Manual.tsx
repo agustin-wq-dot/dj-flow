@@ -1,22 +1,22 @@
-// src/pages/Manual.tsx
 import React, { useState } from 'react';
 import { Deck } from '@/components/Deck';
 import { DeckState } from '@/types/dj';
 import { Slider } from '@/components/ui/slider';
 
 export default function Manual() {
-  const [deckA, setDeckA] = useState<DeckState>({
+  const emptyDeck: DeckState = {
+    track: null,
+    isReady: false,
     isPlaying: false,
+    currentTime: 0,
+    duration: 0,
     volume: 1,
-    position: 0,
-  });
+    playbackRate: 1,
+    loop: null,
+  };
 
-  const [deckB, setDeckB] = useState<DeckState>({
-    isPlaying: false,
-    volume: 1,
-    position: 0,
-  });
-
+  const [deckA, setDeckA] = useState<DeckState>({ ...emptyDeck });
+  const [deckB, setDeckB] = useState<DeckState>({ ...emptyDeck });
   const [crossfader, setCrossfader] = useState(0.5);
 
   const computeVolume = (deck: 'A' | 'B') => {
