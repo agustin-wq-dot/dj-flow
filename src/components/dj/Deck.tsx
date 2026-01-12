@@ -1,3 +1,4 @@
+// Deck.tsx
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -17,7 +18,7 @@ interface DeckProps {
   onToggleLoop: (duration: 4 | 8 | 16) => void;
 }
 
-export const Deck: React.FC<DeckProps> = ({
+const Deck: React.FC<DeckProps> = ({
   deckId,
   containerId,
   state,
@@ -101,3 +102,6 @@ export const Deck: React.FC<DeckProps> = ({
     </div>
   );
 };
+
+export default Deck; // <- aquí el cambio clave
+
