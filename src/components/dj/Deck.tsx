@@ -1,107 +1,87 @@
-// Deck.tsx
-import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
+// src/components/Deck.tsx
+import React, { useEffect, useRef } from 'react';
 import { DeckState } from '@/types/dj';
+import { Button } from '@/components/ui/button';
 import { Play, Pause, RotateCcw } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
 
 interface DeckProps {
   deckId: 'A' | 'B';
   containerId: string;
-  state: DeckState;
-  effectiveVolume: number;
-  onPlay: () => void;
-  onPause: () => void;
-  onSeek: (time: number) => void;
-  onVolumeChange: (volume: number) => void;
-  onPlaybackRateChange: (rate: number) => void;
-  onToggleLoop: (duration: 4 | 8 | 16) => void;
+  deckState: DeckState;
+  setDeckState: (state: DeckState) => void;
+  volume: number;
 }
 
-const Deck: React.FC<DeckProps> = ({
-  deckId,
-  containerId,
-  state,
-  effectiveVolume,
-  onPlay,
-  onPause,
-  onSeek,
-  onVolumeChange,
-  onPlaybackRateChange,
-  onToggleLoop,
-}) => {
-  const accentColor = deckId === 'A' ? 'text-blue-500' : 'text-red-500';
+export const Deck: React.FC<DeckProps> = ({ deckId, containerId, deckState, setDeckState, volume }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Actualizar volumen cuando cambia prop
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
+  // Play / Pause
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (deckState.isPlaying) {
+      audioRef.current.pause();
+      setDeckState({ ...deckState, isPlaying: false });
+    } else {
+      audioRef.current.play();
+      setDeckState({ ...deckState, isPlaying: true });
+    }
+  };
+
+  // Reiniciar
+  const restart = () => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = 0;
+    setDeckState({ ...deckState, position: 0 });
+  };
+
+  // Actualizar posición
+  const onTimeUpdate = () => {
+    if (!audioRef.current) return;
+    setDeckState({ ...deckState, position: audioRef.current.currentTime });
+  };
 
   return (
-    <div className="space-y-4">
-      <h3 className={`font-bold ${accentColor}`}>Deck {deckId}</h3>
+    <div className="flex flex-col gap-2 border p-4 rounded">
+      <h2 className="font-bold text-lg">Deck {deckId}</h2>
 
-      {/* Transport */}
+      {/* Contenedor de audio */}
+      <audio
+        ref={audioRef}
+        id={containerId}
+        onTimeUpdate={onTimeUpdate}
+        src="" // Aquí podés poner la url de la canción
+      />
+
+      {/* Controles */}
       <div className="flex gap-2">
-        {!state.isPlaying ? (
-          <Button onClick={onPlay} disabled={!state.track}>
-            <Play className="w-4 h-4" />
-          </Button>
-        ) : (
-          <Button onClick={onPause}>
-            <Pause className="w-4 h-4" />
-          </Button>
-        )}
-
-        <Button
-          variant="outline"
-          onClick={() => onSeek(0)}
-          disabled={!state.track}
-        >
-          <RotateCcw className="w-4 h-4" />
+        <Button onClick={togglePlay}>
+          {deckState.isPlaying ? <Pause size={16} /> : <Play size={16} />}
+        </Button>
+        <Button onClick={restart}>
+          <RotateCcw size={16} />
         </Button>
       </div>
 
-      {/* Volume */}
-      <div>
-        <label className="text-xs">Volume</label>
-        <Slider
-          value={[effectiveVolume]}
-          max={100}
-          step={1}
-          onValueChange={([v]) => onVolumeChange(v)}
-        />
-      </div>
-
-      {/* Playback Rate */}
-      <div>
-        <label className="text-xs">Speed</label>
-        <Slider
-          value={[state.playbackRate]}
-          min={0.5}
-          max={1.5}
-          step={0.05}
-          onValueChange={([v]) => onPlaybackRateChange(v)}
-        />
-      </div>
-
-      {/* Loop */}
-      <div className="flex gap-2">
-        {[4, 8, 16].map((duration) => (
-          <Button
-            key={duration}
-            variant={state.loop?.duration === duration ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => onToggleLoop(duration as 4 | 8 | 16)}
-            disabled={!state.track}
-          >
-            {duration}s
-          </Button>
-        ))}
-      </div>
-
-      {/* Player */}
-      <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-        <div id={containerId} className="w-full h-full" />
-      </div>
+      {/* Slider posición */}
+      <Slider
+        value={deckState.position}
+        onValueChange={(val) => {
+          if (audioRef.current) audioRef.current.currentTime = val;
+          setDeckState({ ...deckState, position: val });
+        }}
+        min={0}
+        max={audioRef.current?.duration || 0}
+        step={0.01}
+      />
     </div>
   );
 };
-
-export default Deck; // <- aquí el cambio clave
 
