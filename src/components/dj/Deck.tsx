@@ -46,18 +46,29 @@ export const Deck: React.FC<DeckProps> = ({
   const audio = useDeckAudio();
   const [audioUrl, setAudioUrl] = useState('');
 
+  // 🎛️ Source mode
+  const isAudioMode = audioUrl.trim().length > 0;
+
   const handlePlay = () => {
-    audio.play();
-    onPlay();
+    if (isAudioMode) {
+      audio.play();
+    } else {
+      onPlay(); // YouTube
+    }
   };
 
   const handlePause = () => {
-    audio.stop();
-    onPause();
+    if (isAudioMode) {
+      audio.stop();
+    } else {
+      onPause(); // YouTube
+    }
   };
 
   const handleVolumeChange = (val: number) => {
-    audio.setGain(val);
+    if (isAudioMode) {
+      audio.setGain(val);
+    }
     onVolumeChange(val);
   };
 
@@ -81,6 +92,11 @@ export const Deck: React.FC<DeckProps> = ({
         </Button>
       </div>
 
+      {/* Source Indicator */}
+      <div className="text-xs opacity-70">
+        Source: {isAudioMode ? 'Audio URL' : 'YouTube'}
+      </div>
+
       {/* Audio URL */}
       <div className="space-y-2">
         <input
@@ -99,7 +115,7 @@ export const Deck: React.FC<DeckProps> = ({
         </Button>
       </div>
 
-      {/* Player Container (YouTube u otro) */}
+      {/* YouTube Container */}
       <div className="aspect-video bg-black/50 rounded-lg overflow-hidden">
         <div id={containerId} className="w-full h-full" />
       </div>
