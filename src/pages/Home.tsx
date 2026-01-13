@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
@@ -25,27 +25,50 @@ const extractVideoId = (url: string): string | null => {
 const Home: React.FC = () => {
   const [input, setInput] = useState('');
   const [playlist, setPlaylist] = useState<string[]>([]);
-  const [index, setIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(6);
   const [playersReady, setPlayersReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const deckARef = useRef<any>(null);
   const deckBRef = useRef<any>(null);
-
   const containerARef = useRef<HTMLDivElement>(null);
   const containerBRef = useRef<HTMLDivElement>(null);
 
   const fadeTimer = useRef<any>(null);
   const monitorTimer = useRef<any>(null);
-
   const readyCount = useRef(0);
+
+  // Refs to track current state in callbacks
+  const playlistRef = useRef<string[]>([]);
+  const indexRef = useRef(0);
+  const activeDeckRef = useRef<'A' | 'B'>('A');
+  const crossfadeSecondsRef = useRef(6);
+  const isFading = useRef(false);
+
+  // Sync refs with state
+  useEffect(() => { playlistRef.current = playlist; }, [playlist]);
+  useEffect(() => { indexRef.current = currentIndex; }, [currentIndex]);
+  useEffect(() => { activeDeckRef.current = activeDeck; }, [activeDeck]);
+  useEffect(() => { crossfadeSecondsRef.current = crossfadeSeconds; }, [crossfadeSeconds]);
 
   /* ================= YT API ================= */
 
   useEffect(() => {
-    if (window.YT) {
+    if (window.YT && window.YT.Player) {
       initPlayers();
+      return;
+    }
+
+    const existingScript = document.querySelector('script[src*="youtube.com/iframe_api"]');
+    if (existingScript) {
+      const checkReady = setInterval(() => {
+        if (window.YT && window.YT.Player) {
+          clearInterval(checkReady);
+          initPlayers();
+        }
+      }, 100);
       return;
     }
 
@@ -64,14 +87,13 @@ const Home: React.FC = () => {
       controls: 0,
       playsinline: 1,
       origin: window.location.origin,
-      mute: 1, // 🔥 CLAVE
     };
 
     deckARef.current = new window.YT.Player(containerARef.current, {
       playerVars: commonVars,
       events: {
         onReady: onPlayerReady,
-        onStateChange: (e: any) => onStateChange(e, 'A'),
+        onStateChange: (e: any) => handlePlayerState(e, 'A'),
       },
     });
 
@@ -79,124 +101,152 @@ const Home: React.FC = () => {
       playerVars: commonVars,
       events: {
         onReady: onPlayerReady,
-        onStateChange: (e: any) => onStateChange(e, 'B'),
+        onStateChange: (e: any) => handlePlayerState(e, 'B'),
       },
     });
   };
 
   const onPlayerReady = (e: any) => {
-    // Aseguramos mute explícito
-    e.target.mute();
+    e.target.setVolume(0);
     readyCount.current += 1;
     if (readyCount.current === 2) {
       setPlayersReady(true);
     }
   };
 
-  /* ================= STATE CHANGE ================= */
+  /* ================= PLAYER STATE HANDLER ================= */
 
-  const onStateChange = (e: any, deck: 'A' | 'B') => {
-    const player = deck === 'A' ? deckARef.current : deckBRef.current;
-    const other = deck === 'A' ? deckBRef.current : deckARef.current;
+  const handlePlayerState = useCallback((e: any, deck: 'A' | 'B') => {
+    // Only handle events from the active deck
+    if (deck !== activeDeckRef.current) return;
 
-    if (deck !== activeDeck) return;
+    const activePlayer = deck === 'A' ? deckARef.current : deckBRef.current;
+    const nextPlayer = deck === 'A' ? deckBRef.current : deckARef.current;
 
     if (e.data === window.YT.PlayerState.PLAYING) {
-      startMonitoring(player, other);
+      setIsPlaying(true);
+      startMonitoring(activePlayer, nextPlayer);
     }
 
     if (e.data === window.YT.PlayerState.ENDED) {
-      startCrossfade(player, other);
+      triggerCrossfade();
     }
-  };
+  }, []);
 
-  /* ================= AUTO DJ ================= */
+  /* ================= MONITORING ================= */
 
-  const startMonitoring = (from: any, to: any) => {
+  const startMonitoring = useCallback((from: any, to: any) => {
     clearInterval(monitorTimer.current);
 
     monitorTimer.current = setInterval(() => {
+      if (!from || typeof from.getDuration !== 'function') return;
+      
       const duration = from.getDuration();
       const current = from.getCurrentTime();
-      if (!duration || !current) return;
+      
+      if (!duration || duration <= 0) return;
 
-      if (duration - current <= crossfadeSeconds) {
+      const remaining = duration - current;
+      
+      if (remaining <= crossfadeSecondsRef.current && remaining > 0 && !isFading.current) {
         clearInterval(monitorTimer.current);
-        startCrossfade(from, to);
+        triggerCrossfade();
       }
-    }, 500);
-  };
+    }, 300);
+  }, []);
 
-  const startCrossfade = (from: any, to: any) => {
-    if (fadeTimer.current) return;
+  /* ================= CROSSFADE ================= */
 
-    const nextIndex = index + 1;
-    if (nextIndex >= playlist.length) return;
+  const triggerCrossfade = useCallback(() => {
+    if (isFading.current) return;
 
-    to.loadVideoById(playlist[nextIndex]);
-    to.mute();
-    to.playVideo();
+    const nextIdx = indexRef.current + 1;
+    if (nextIdx >= playlistRef.current.length) {
+      // End of playlist
+      setIsPlaying(false);
+      return;
+    }
+
+    isFading.current = true;
+
+    const currentDeck = activeDeckRef.current;
+    const fromPlayer = currentDeck === 'A' ? deckARef.current : deckBRef.current;
+    const toPlayer = currentDeck === 'A' ? deckBRef.current : deckARef.current;
+
+    // Load and prepare next track
+    toPlayer.loadVideoById(playlistRef.current[nextIdx]);
+    toPlayer.setVolume(0);
 
     let step = 0;
-    const steps = crossfadeSeconds * 10;
+    const totalSteps = crossfadeSecondsRef.current * 10;
 
     fadeTimer.current = setInterval(() => {
       step++;
 
-      from.setVolume(Math.max(0, 100 - (step * 100) / steps));
-      to.setVolume(Math.min(100, (step * 100) / steps));
+      const fadeOutVol = Math.max(0, 100 - (step * 100) / totalSteps);
+      const fadeInVol = Math.min(100, (step * 100) / totalSteps);
 
-      if (step === Math.floor(steps / 2)) {
-        to.unMute();
-      }
+      fromPlayer.setVolume(fadeOutVol);
+      toPlayer.setVolume(fadeInVol);
 
-      if (step >= steps) {
+      if (step >= totalSteps) {
         clearInterval(fadeTimer.current);
         fadeTimer.current = null;
 
-        from.stopVideo();
-        setIndex(nextIndex);
-        setActiveDeck((d) => (d === 'A' ? 'B' : 'A'));
+        fromPlayer.stopVideo();
+        fromPlayer.setVolume(0);
+        
+        // Switch active deck
+        const newDeck = currentDeck === 'A' ? 'B' : 'A';
+        setActiveDeck(newDeck);
+        activeDeckRef.current = newDeck;
+        
+        setCurrentIndex(nextIdx);
+        indexRef.current = nextIdx;
+        
+        isFading.current = false;
+
+        // Start monitoring the new active player
+        startMonitoring(toPlayer, fromPlayer);
       }
     }, 100);
-  };
+  }, [startMonitoring]);
 
-  /* ================= CONTROLES ================= */
+  /* ================= START PLAYBACK ================= */
 
-  const startAutoDJ = () => {
-    if (!playlist.length) {
-      // Parse and load playlist first
-      const ids = input
-        .split('\n')
-        .map(extractVideoId)
-        .filter((v): v is string => Boolean(v));
+  const startAutoDJ = useCallback(() => {
+    // Parse playlist from input
+    const ids = input
+      .split('\n')
+      .map(extractVideoId)
+      .filter((v): v is string => Boolean(v));
 
-      if (!ids.length) return;
+    if (!ids.length) return;
 
-      setPlaylist(ids);
-      setIndex(0);
-      setActiveDeck('A');
+    // Reset state
+    setPlaylist(ids);
+    playlistRef.current = ids;
+    setCurrentIndex(0);
+    indexRef.current = 0;
+    setActiveDeck('A');
+    activeDeckRef.current = 'A';
+    isFading.current = false;
 
-      // Wait for state update and players ready
-      const waitAndPlay = () => {
-        if (playersReady && deckARef.current) {
-          deckARef.current.loadVideoById(ids[0]);
-          deckARef.current.setVolume(100);
-          deckARef.current.playVideo();
-          deckARef.current.unMute();
-        } else {
-          setTimeout(waitAndPlay, 100);
-        }
-      };
-      waitAndPlay();
-    } else {
-      // Playlist already loaded, just play
-      deckARef.current.loadVideoById(playlist[0]);
-      deckARef.current.setVolume(100);
-      deckARef.current.playVideo();
-      deckARef.current.unMute();
-    }
-  };
+    clearInterval(monitorTimer.current);
+    clearInterval(fadeTimer.current);
+
+    // Start playback on Deck A
+    const startPlayback = () => {
+      if (deckARef.current && typeof deckARef.current.loadVideoById === 'function') {
+        deckARef.current.loadVideoById(ids[0]);
+        deckARef.current.setVolume(100);
+      } else {
+        setTimeout(startPlayback, 100);
+      }
+    };
+
+    startPlayback();
+  }, [input]);
 
   /* ================= UI ================= */
 
@@ -224,10 +274,15 @@ const Home: React.FC = () => {
         />
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
         <Button onClick={startAutoDJ} disabled={!playersReady || !input.trim()}>
           ▶ Play Auto-DJ
         </Button>
+        {isPlaying && (
+          <span className="text-sm text-muted-foreground">
+            Track {currentIndex + 1} de {playlist.length}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -243,7 +298,7 @@ const Home: React.FC = () => {
           >
             <div className="font-semibold">
               Deck {deck}{' '}
-              {activeDeck === deck && (
+              {activeDeck === deck && isPlaying && (
                 <span className="text-green-500">(ON AIR)</span>
               )}
             </div>
