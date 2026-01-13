@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DeckState } from '@/types/dj';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, SkipForward, Repeat } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
+import { useDeckAudio } from '../../audio/useDeckAudio';
 
 interface DeckProps {
   deckId: 'A' | 'B';
@@ -40,15 +41,38 @@ export const Deck: React.FC<DeckProps> = ({
 }) => {
   const isDeckA = deckId === 'A';
   const deckColor = isDeckA ? 'deck-a' : 'deck-b';
-  
+
+  // 🔊 Web Audio
+  const audio = useDeckAudio();
+  const [audioUrl, setAudioUrl] = useState('');
+
+  const handlePlay = () => {
+    audio.play();
+    onPlay();
+  };
+
+  const handlePause = () => {
+    audio.stop();
+    onPause();
+  };
+
+  const handleVolumeChange = (val: number) => {
+    audio.setGain(val);
+    onVolumeChange(val);
+  };
+
   return (
-    <div className={cn(
-      "rounded-xl border p-4 space-y-4",
-      isDeckA ? "bg-deck-a/5 border-deck-a/30" : "bg-deck-b/5 border-deck-b/30"
-    )}>
+    <div
+      className={cn(
+        'rounded-xl border p-4 space-y-4',
+        isDeckA
+          ? 'bg-deck-a/5 border-deck-a/30'
+          : 'bg-deck-b/5 border-deck-b/30'
+      )}
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className={cn("font-bold text-lg", `text-${deckColor}`)}>
+        <h2 className={cn('font-bold text-lg', `text-${deckColor}`)}>
           Deck {deckId}
         </h2>
         <Button variant="outline" size="sm" onClick={onLoadNext}>
@@ -57,7 +81,25 @@ export const Deck: React.FC<DeckProps> = ({
         </Button>
       </div>
 
-      {/* YouTube Player Container */}
+      {/* Audio URL */}
+      <div className="space-y-2">
+        <input
+          className="w-full p-2 text-sm border rounded"
+          placeholder="URL de audio (mp3, wav)"
+          value={audioUrl}
+          onChange={(e) => setAudioUrl(e.target.value)}
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!audioUrl}
+          onClick={() => audio.load(audioUrl)}
+        >
+          Cargar Audio
+        </Button>
+      </div>
+
+      {/* Player Container (YouTube u otro) */}
       <div className="aspect-video bg-black/50 rounded-lg overflow-hidden">
         <div id={containerId} className="w-full h-full" />
       </div>
@@ -69,14 +111,13 @@ export const Deck: React.FC<DeckProps> = ({
         </div>
       )}
 
-      {/* Progress Bar */}
+      {/* Progress */}
       <div className="space-y-1">
         <Slider
           value={[state.currentTime]}
           max={state.duration || 100}
           step={0.1}
           onValueChange={([val]) => onSeek(val)}
-          className="cursor-pointer"
         />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>{formatTime(state.currentTime)}</span>
@@ -86,26 +127,32 @@ export const Deck: React.FC<DeckProps> = ({
 
       {/* Controls */}
       <div className="flex items-center justify-between gap-2">
-        {/* Play/Pause */}
         <Button
           size="icon"
-          variant={state.isPlaying ? "default" : "outline"}
-          onClick={state.isPlaying ? onPause : onPlay}
-          className={state.isPlaying ? `bg-${deckColor} hover:bg-${deckColor}/90` : ""}
+          variant={state.isPlaying ? 'default' : 'outline'}
+          onClick={state.isPlaying ? handlePause : handlePlay}
+          className={
+            state.isPlaying ? `bg-${deckColor} hover:bg-${deckColor}/90` : ''
+          }
         >
-          {state.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          {state.isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
         </Button>
 
-        {/* Loop Buttons */}
         <div className="flex gap-1">
           {([4, 8, 16] as const).map((duration) => (
             <Button
               key={duration}
               size="sm"
-              variant={state.loop?.duration === duration ? "default" : "outline"}
+              variant={
+                state.loop?.duration === duration ? 'default' : 'outline'
+              }
               onClick={() => onToggleLoop(duration)}
               className={cn(
-                "text-xs px-2",
+                'text-xs px-2',
                 state.loop?.duration === duration && `bg-${deckColor}`
               )}
             >
@@ -116,20 +163,18 @@ export const Deck: React.FC<DeckProps> = ({
         </div>
       </div>
 
-      {/* Volume & Speed */}
+      {/* Volume & Tempo */}
       <div className="grid grid-cols-2 gap-4">
-        {/* Volume */}
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Volume</label>
           <Slider
             value={[state.volume]}
             max={1}
             step={0.01}
-            onValueChange={([val]) => onVolumeChange(val)}
+            onValueChange={([val]) => handleVolumeChange(val)}
           />
         </div>
 
-        {/* Playback Rate */}
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">
             Tempo: {state.playbackRate.toFixed(2)}x
@@ -144,10 +189,10 @@ export const Deck: React.FC<DeckProps> = ({
         </div>
       </div>
 
-      {/* Effective Volume Indicator */}
+      {/* Effective Volume */}
       <div className="h-1 bg-muted rounded-full overflow-hidden">
         <div
-          className={cn("h-full transition-all", `bg-${deckColor}`)}
+          className={cn('h-full transition-all', `bg-${deckColor}`)}
           style={{ width: `${effectiveVolume * 100}%` }}
         />
       </div>
