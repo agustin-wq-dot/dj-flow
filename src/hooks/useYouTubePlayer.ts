@@ -44,7 +44,7 @@ interface YouTubeAPI {
 
 declare global {
   interface Window {
-    YT: YouTubeAPI;
+    YT: any;
     onYouTubeIframeAPIReady: () => void;
   }
 }

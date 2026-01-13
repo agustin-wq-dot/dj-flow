@@ -44,16 +44,17 @@ export const usePlaylist = () => {
       if (!videoId) continue;
 
       // Check if already exists
-      if (tracks.some(t => t.videoId === videoId)) continue;
+      if (tracks.some(t => t.youtubeId === videoId)) continue;
 
       const info = await fetchVideoInfo(videoId);
       if (info) {
         newTracks.push({
           id: `${videoId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          videoId,
+          youtubeId: videoId,
+          source: 'youtube',
           title: info.title || 'Unknown Title',
           thumbnail: info.thumbnail || '',
-          duration: 0, // Will be set when loaded in player
+          duration: 0,
         });
       }
     }
