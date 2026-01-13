@@ -1,6 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
 
 const extractVideoId = (url: string): string | null => {
   try {
@@ -22,7 +29,50 @@ const Home: React.FC = () => {
   const [playlist, setPlaylist] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  const playerRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const currentVideoId = playlist[currentIndex];
+
+  // Load YouTube API once
+  useEffect(() => {
+    if (window.YT) return;
+
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.body.appendChild(tag);
+
+    window.onYouTubeIframeAPIReady = () => {};
+  }, []);
+
+  // Create / load player
+  useEffect(() => {
+    if (!currentVideoId || !window.YT || !containerRef.current) return;
+
+    if (playerRef.current) {
+      playerRef.current.loadVideoById(currentVideoId);
+      return;
+    }
+
+    playerRef.current = new window.YT.Player(containerRef.current, {
+      videoId: currentVideoId,
+      playerVars: {
+        autoplay: 1,
+        controls: 1,
+      },
+      events: {
+        onReady: (e: any) => e.target.playVideo(),
+        onStateChange: (e: any) => {
+          // ENDED = 0
+          if (e.data === window.YT.PlayerState.ENDED) {
+            setCurrentIndex((i) =>
+              i + 1 < playlist.length ? i + 1 : i
+            );
+          }
+        },
+      },
+    });
+  }, [currentVideoId, playlist.length]);
 
   const loadPlaylist = () => {
     const ids = input
@@ -34,25 +84,11 @@ const Home: React.FC = () => {
     setCurrentIndex(0);
   };
 
-  // Auto-advance (cuando cambia index, se recarga iframe)
-  useEffect(() => {
-    if (!currentVideoId) return;
-
-    const timer = setTimeout(() => {
-      // fallback simple: 4 minutos
-      setCurrentIndex((i) =>
-        i + 1 < playlist.length ? i + 1 : i
-      );
-    }, 240000);
-
-    return () => clearTimeout(timer);
-  }, [currentVideoId, playlist.length]);
-
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold">Auto-DJ</h1>
 
-      {/* Playlist input */}
+      {/* Input */}
       <div className="space-y-2">
         <Textarea
           rows={6}
@@ -68,13 +104,7 @@ const Home: React.FC = () => {
       {/* Player */}
       {currentVideoId && (
         <div className="aspect-video bg-black rounded overflow-hidden">
-          <iframe
-            key={currentVideoId}
-            src={`https://www.youtube.com/embed/${currentVideoId}?autoplay=1&controls=1`}
-            allow="autoplay; encrypted-media"
-            allowFullScreen
-            className="w-full h-full"
-          />
+          <div ref={containerRef} className="w-full h-full" />
         </div>
       )}
 
