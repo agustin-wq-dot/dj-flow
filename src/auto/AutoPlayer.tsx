@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Track } from '@/types/track';
+import { Track } from '@/types/Track';
 
 interface AutoPlayerProps {
   playlist: Track[];

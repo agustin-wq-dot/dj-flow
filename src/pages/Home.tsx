@@ -163,24 +163,39 @@ const Home: React.FC = () => {
 
   /* ================= CONTROLES ================= */
 
-  const loadPlaylist = () => {
-    const ids = input
-      .split('\n')
-      .map(extractVideoId)
-      .filter((v): v is string => Boolean(v));
-
-    setPlaylist(ids);
-    setIndex(0);
-    setActiveDeck('A');
-  };
-
   const startAutoDJ = () => {
-    if (!playersReady || !playlist.length) return;
+    if (!playlist.length) {
+      // Parse and load playlist first
+      const ids = input
+        .split('\n')
+        .map(extractVideoId)
+        .filter((v): v is string => Boolean(v));
 
-    deckARef.current.loadVideoById(playlist[0]);
-    deckARef.current.setVolume(100);
-    deckARef.current.playVideo();
-    deckARef.current.unMute();
+      if (!ids.length) return;
+
+      setPlaylist(ids);
+      setIndex(0);
+      setActiveDeck('A');
+
+      // Wait for state update and players ready
+      const waitAndPlay = () => {
+        if (playersReady && deckARef.current) {
+          deckARef.current.loadVideoById(ids[0]);
+          deckARef.current.setVolume(100);
+          deckARef.current.playVideo();
+          deckARef.current.unMute();
+        } else {
+          setTimeout(waitAndPlay, 100);
+        }
+      };
+      waitAndPlay();
+    } else {
+      // Playlist already loaded, just play
+      deckARef.current.loadVideoById(playlist[0]);
+      deckARef.current.setVolume(100);
+      deckARef.current.playVideo();
+      deckARef.current.unMute();
+    }
   };
 
   /* ================= UI ================= */
@@ -210,8 +225,7 @@ const Home: React.FC = () => {
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={loadPlaylist}>Cargar playlist</Button>
-        <Button onClick={startAutoDJ} disabled={!playersReady}>
+        <Button onClick={startAutoDJ} disabled={!playersReady || !input.trim()}>
           ▶ Play Auto-DJ
         </Button>
       </div>

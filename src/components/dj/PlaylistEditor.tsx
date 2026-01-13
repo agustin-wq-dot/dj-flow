@@ -117,7 +117,7 @@ https://youtu.be/abcdef12345"
                   </span>
                   
                   <img
-                    src={track.thumbnail}
+                    src={track.thumbnail || `https://img.youtube.com/vi/${track.youtubeId}/mqdefault.jpg`}
                     alt={track.title}
                     className="w-20 h-12 object-cover rounded"
                   />

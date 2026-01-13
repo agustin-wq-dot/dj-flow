@@ -47,7 +47,7 @@ export const PlaylistSidebar: React.FC<PlaylistSidebarProps> = ({
                 <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab" />
                 
                 <img
-                  src={track.thumbnail}
+                  src={track.thumbnail || `https://img.youtube.com/vi/${track.youtubeId}/mqdefault.jpg`}
                   alt={track.title}
                   className="w-12 h-9 object-cover rounded"
                 />

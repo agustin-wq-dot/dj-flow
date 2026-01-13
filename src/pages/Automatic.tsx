@@ -1,6 +1,6 @@
 import React from 'react';
 import { AutoPlayer } from '@/auto/AutoPlayer';
-import { Track } from '@/types/track';
+import { Track } from '@/types/Track';
 
 const playlist: Track[] = [
   {

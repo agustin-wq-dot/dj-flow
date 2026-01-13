@@ -50,7 +50,7 @@ export const useDeck = ({ deckId, onStateChange, onEnded }: UseDeckOptions) => {
 
   const loadTrack = useCallback((track: Track, autoplay: boolean = false) => {
     loopRef.current = null;
-    loadVideo(track.videoId);
+    loadVideo(track.youtubeId);
     onStateChange({
       track,
       currentTime: 0,
