@@ -33,8 +33,7 @@ const Home: React.FC = () => {
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
   const [started, setStarted] = useState(false);
 
-  const [readyA, setReadyA] = useState(false);
-  const [readyB, setReadyB] = useState(false);
+  const pendingPlayRef = useRef(false);
 
   const deckARef = useRef<any>(null);
   const deckBRef = useRef<any>(null);
@@ -44,7 +43,8 @@ const Home: React.FC = () => {
 
   const fadeRef = useRef<any>(null);
 
-  // Load YouTube API
+  /* ================= YT API ================= */
+
   useEffect(() => {
     if (window.YT) return;
 
@@ -52,30 +52,33 @@ const Home: React.FC = () => {
     tag.src = 'https://www.youtube.com/iframe_api';
     document.body.appendChild(tag);
 
-    window.onYouTubeIframeAPIReady = () => {};
+    window.onYouTubeIframeAPIReady = () => {
+      initPlayers();
+    };
   }, []);
 
-  // Init players
-  useEffect(() => {
-    if (!window.YT || !containerARef.current || !containerBRef.current) return;
+  const initPlayers = () => {
+    if (!containerARef.current || !containerBRef.current) return;
     if (deckARef.current || deckBRef.current) return;
 
     deckARef.current = new window.YT.Player(containerARef.current, {
       playerVars: { autoplay: 0, controls: 0 },
       events: {
-        onReady: () => setReadyA(true),
+        onReady: () => {
+          if (pendingPlayRef.current) {
+            startDeckA();
+          }
+        },
       },
     });
 
     deckBRef.current = new window.YT.Player(containerBRef.current, {
       playerVars: { autoplay: 0, controls: 0 },
-      events: {
-        onReady: () => setReadyB(true),
-      },
     });
-  }, []);
+  };
 
-  // Monitor crossfade
+  /* ================= AUTO DJ ================= */
+
   useEffect(() => {
     if (!started) return;
 
@@ -128,6 +131,8 @@ const Home: React.FC = () => {
     }, 100);
   };
 
+  /* ================= CONTROLES ================= */
+
   const loadPlaylist = () => {
     const ids = input
       .split('\n')
@@ -138,12 +143,10 @@ const Home: React.FC = () => {
     setIndex(0);
     setActiveDeck('A');
     setStarted(false);
+    pendingPlayRef.current = false;
   };
 
-  const startAutoDJ = () => {
-    if (!playlist.length) return;
-    if (!readyA) return;
-
+  const startDeckA = () => {
     const player = deckARef.current;
     if (!player) return;
 
@@ -151,8 +154,22 @@ const Home: React.FC = () => {
     player.setVolume(100);
     player.playVideo();
 
+    pendingPlayRef.current = false;
     setStarted(true);
   };
+
+  const startAutoDJ = () => {
+    if (!playlist.length) return;
+
+    if (!deckARef.current) {
+      pendingPlayRef.current = true;
+      return;
+    }
+
+    startDeckA();
+  };
+
+  /* ================= UI ================= */
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -168,10 +185,7 @@ const Home: React.FC = () => {
 
         <div className="flex gap-2">
           <Button onClick={loadPlaylist}>Cargar playlist</Button>
-          <Button
-            onClick={startAutoDJ}
-            disabled={!playlist.length || !readyA || started}
-          >
+          <Button onClick={startAutoDJ}>
             ▶ Play Auto-DJ
           </Button>
         </div>
