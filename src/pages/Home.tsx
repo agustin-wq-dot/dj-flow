@@ -31,22 +31,21 @@ const Home: React.FC = () => {
   const [playlist, setPlaylist] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
+  const [started, setStarted] = useState(false);
 
   const deckARef = useRef<any>(null);
   const deckBRef = useRef<any>(null);
   const containerARef = useRef<HTMLDivElement>(null);
   const containerBRef = useRef<HTMLDivElement>(null);
 
-  const fadeIntervalRef = useRef<any>(null);
+  const fadeRef = useRef<any>(null);
 
-  // Load YT API once
+  // Load YT API
   useEffect(() => {
     if (window.YT) return;
-
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     document.body.appendChild(tag);
-
     window.onYouTubeIframeAPIReady = () => {};
   }, []);
 
@@ -64,19 +63,10 @@ const Home: React.FC = () => {
     });
   }, []);
 
-  // Start first track
+  // Monitor for crossfade
   useEffect(() => {
-    if (!playlist.length) return;
-    const player = activeDeck === 'A' ? deckARef.current : deckBRef.current;
-    if (!player) return;
+    if (!started) return;
 
-    player.loadVideoById(playlist[index]);
-    player.setVolume(100);
-    player.playVideo();
-  }, [playlist]);
-
-  // Monitor crossfade
-  useEffect(() => {
     const interval = setInterval(() => {
       const active = activeDeck === 'A' ? deckARef.current : deckBRef.current;
       const next = activeDeck === 'A' ? deckBRef.current : deckARef.current;
@@ -86,13 +76,13 @@ const Home: React.FC = () => {
       const current = active.getCurrentTime?.();
       if (!duration || !current) return;
 
-      if (duration - current <= CROSSFADE_SECONDS && !fadeIntervalRef.current) {
+      if (duration - current <= CROSSFADE_SECONDS && !fadeRef.current) {
         startCrossfade(active, next);
       }
     }, 500);
 
     return () => clearInterval(interval);
-  }, [activeDeck, index]);
+  }, [activeDeck, index, started]);
 
   const startCrossfade = (from: any, to: any) => {
     const nextIndex = index + 1;
@@ -105,17 +95,14 @@ const Home: React.FC = () => {
     let step = 0;
     const steps = CROSSFADE_SECONDS * 10;
 
-    fadeIntervalRef.current = setInterval(() => {
+    fadeRef.current = setInterval(() => {
       step++;
-      const fromVol = Math.max(0, 100 - (step * 100) / steps);
-      const toVol = Math.min(100, (step * 100) / steps);
-
-      from.setVolume(fromVol);
-      to.setVolume(toVol);
+      from.setVolume(Math.max(0, 100 - (step * 100) / steps));
+      to.setVolume(Math.min(100, (step * 100) / steps));
 
       if (step >= steps) {
-        clearInterval(fadeIntervalRef.current);
-        fadeIntervalRef.current = null;
+        clearInterval(fadeRef.current);
+        fadeRef.current = null;
 
         from.stopVideo();
         setIndex(nextIndex);
@@ -133,6 +120,18 @@ const Home: React.FC = () => {
     setPlaylist(ids);
     setIndex(0);
     setActiveDeck('A');
+    setStarted(false);
+  };
+
+  const startAutoDJ = () => {
+    if (!playlist.length) return;
+    const player = deckARef.current;
+    if (!player) return;
+
+    player.loadVideoById(playlist[0]);
+    player.setVolume(100);
+    player.playVideo();
+    setStarted(true);
   };
 
   return (
@@ -146,10 +145,18 @@ const Home: React.FC = () => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
-        <Button onClick={loadPlaylist}>Cargar playlist</Button>
+        <div className="flex gap-2">
+          <Button onClick={loadPlaylist}>Cargar playlist</Button>
+          <Button
+            onClick={startAutoDJ}
+            disabled={!playlist.length || started}
+          >
+            ▶ Play Auto-DJ
+          </Button>
+        </div>
       </div>
 
-      {/* Players (invisibles) */}
+      {/* Players invisibles */}
       <div className="hidden">
         <div ref={containerARef} />
         <div ref={containerBRef} />
@@ -164,7 +171,8 @@ const Home: React.FC = () => {
                 i === index ? 'bg-primary text-primary-foreground' : 'bg-muted'
               }`}
             >
-              {i + 1}. {id} {i === index && `(Deck ${activeDeck})`}
+              {i + 1}. {id}
+              {i === index && ` (Deck ${activeDeck})`}
             </div>
           ))}
         </div>
