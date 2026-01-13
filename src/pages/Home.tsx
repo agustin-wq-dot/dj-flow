@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
-import YouTube from 'react-youtube';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -10,7 +9,7 @@ const extractVideoId = (url: string): string | null => {
       return u.searchParams.get('v');
     }
     if (u.hostname === 'youtu.be') {
-      return u.pathname.replace('/', '');
+      return u.pathname.slice(1);
     }
     return null;
   } catch {
@@ -22,8 +21,6 @@ const Home: React.FC = () => {
   const [input, setInput] = useState('');
   const [playlist, setPlaylist] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-
-  const playerRef = useRef<any>(null);
 
   const currentVideoId = playlist[currentIndex];
 
@@ -37,60 +34,51 @@ const Home: React.FC = () => {
     setCurrentIndex(0);
   };
 
-  const onReady = (event: any) => {
-    playerRef.current = event.target;
-    event.target.playVideo();
-  };
-
-  const onEnd = () => {
-    setCurrentIndex((prev) => {
-      if (prev + 1 < playlist.length) {
-        return prev + 1;
-      }
-      return prev; // fin de playlist
-    });
-  };
-
+  // Auto-advance (cuando cambia index, se recarga iframe)
   useEffect(() => {
-    if (playerRef.current && currentVideoId) {
-      playerRef.current.loadVideoById(currentVideoId);
-    }
-  }, [currentVideoId]);
+    if (!currentVideoId) return;
+
+    const timer = setTimeout(() => {
+      // fallback simple: 4 minutos
+      setCurrentIndex((i) =>
+        i + 1 < playlist.length ? i + 1 : i
+      );
+    }, 240000);
+
+    return () => clearTimeout(timer);
+  }, [currentVideoId, playlist.length]);
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold">Auto-DJ</h1>
 
-      {/* Input playlist */}
+      {/* Playlist input */}
       <div className="space-y-2">
         <Textarea
+          rows={6}
           placeholder={`Pegá una URL por línea\nhttps://www.youtube.com/watch?v=xxxx`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          rows={6}
         />
-        <Button onClick={loadPlaylist}>Cargar playlist</Button>
+        <Button onClick={loadPlaylist}>
+          Cargar playlist
+        </Button>
       </div>
 
       {/* Player */}
       {currentVideoId && (
         <div className="aspect-video bg-black rounded overflow-hidden">
-          <YouTube
-            videoId={currentVideoId}
-            onReady={onReady}
-            onEnd={onEnd}
-            opts={{
-              width: '100%',
-              height: '100%',
-              playerVars: {
-                autoplay: 1,
-              },
-            }}
+          <iframe
+            key={currentVideoId}
+            src={`https://www.youtube.com/embed/${currentVideoId}?autoplay=1&controls=1`}
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+            className="w-full h-full"
           />
         </div>
       )}
 
-      {/* Playlist visual */}
+      {/* Playlist */}
       {playlist.length > 0 && (
         <div className="space-y-1 text-sm">
           {playlist.map((id, i) => (
