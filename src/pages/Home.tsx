@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 
 declare global {
   interface Window {
@@ -12,19 +13,13 @@ declare global {
 const extractVideoId = (url: string): string | null => {
   try {
     const u = new URL(url.trim());
-    if (u.hostname.includes('youtube.com')) {
-      return u.searchParams.get('v');
-    }
-    if (u.hostname === 'youtu.be') {
-      return u.pathname.slice(1);
-    }
+    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1);
     return null;
   } catch {
     return null;
   }
 };
-
-const CROSSFADE_SECONDS = 6;
 
 const Home: React.FC = () => {
   const [input, setInput] = useState('');
@@ -33,7 +28,8 @@ const Home: React.FC = () => {
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
   const [started, setStarted] = useState(false);
 
-  const pendingPlayRef = useRef(false);
+  // 🔥 CROSSFADE CONTROLADO POR SLIDER
+  const [crossfadeSeconds, setCrossfadeSeconds] = useState(6);
 
   const deckARef = useRef<any>(null);
   const deckBRef = useRef<any>(null);
@@ -41,20 +37,22 @@ const Home: React.FC = () => {
   const containerARef = useRef<HTMLDivElement>(null);
   const containerBRef = useRef<HTMLDivElement>(null);
 
-  const fadeRef = useRef<any>(null);
+  const fadeTimer = useRef<any>(null);
+  const monitorTimer = useRef<any>(null);
 
   /* ================= YT API ================= */
 
   useEffect(() => {
-    if (window.YT) return;
+    if (window.YT) {
+      initPlayers();
+      return;
+    }
 
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     document.body.appendChild(tag);
 
-    window.onYouTubeIframeAPIReady = () => {
-      initPlayers();
-    };
+    window.onYouTubeIframeAPIReady = initPlayers;
   }, []);
 
   const initPlayers = () => {
@@ -62,48 +60,59 @@ const Home: React.FC = () => {
     if (deckARef.current || deckBRef.current) return;
 
     deckARef.current = new window.YT.Player(containerARef.current, {
-      playerVars: { autoplay: 0, controls: 0 },
-      events: {
-        onReady: () => {
-          if (pendingPlayRef.current) {
-            startDeckA();
-          }
-        },
-      },
+      playerVars: { controls: 0 },
+      events: { onStateChange: onStateChangeA },
     });
 
     deckBRef.current = new window.YT.Player(containerBRef.current, {
-      playerVars: { autoplay: 0, controls: 0 },
+      playerVars: { controls: 0 },
+      events: { onStateChange: onStateChangeB },
     });
+  };
+
+  /* ================= STATE CHANGE ================= */
+
+  const onStateChangeA = (e: any) => {
+    if (activeDeck !== 'A') return;
+    handleStateChange(e, deckARef.current, deckBRef.current);
+  };
+
+  const onStateChangeB = (e: any) => {
+    if (activeDeck !== 'B') return;
+    handleStateChange(e, deckBRef.current, deckARef.current);
+  };
+
+  const handleStateChange = (e: any, from: any, to: any) => {
+    if (e.data === window.YT.PlayerState.PLAYING) {
+      startMonitoring(from, to);
+    }
+
+    if (e.data === window.YT.PlayerState.ENDED) {
+      forceNext(from, to);
+    }
   };
 
   /* ================= AUTO DJ ================= */
 
-  useEffect(() => {
-    if (!started) return;
+  const startMonitoring = (from: any, to: any) => {
+    clearInterval(monitorTimer.current);
 
-    const interval = setInterval(() => {
-      const active =
-        activeDeck === 'A' ? deckARef.current : deckBRef.current;
-      const next =
-        activeDeck === 'A' ? deckBRef.current : deckARef.current;
-
-      if (!active || !next) return;
-
-      const duration = active.getDuration?.();
-      const current = active.getCurrentTime?.();
+    monitorTimer.current = setInterval(() => {
+      const duration = from.getDuration();
+      const current = from.getCurrentTime();
 
       if (!duration || !current) return;
 
-      if (duration - current <= CROSSFADE_SECONDS && !fadeRef.current) {
-        startCrossfade(active, next);
+      if (duration - current <= crossfadeSeconds) {
+        clearInterval(monitorTimer.current);
+        startCrossfade(from, to);
       }
     }, 500);
-
-    return () => clearInterval(interval);
-  }, [activeDeck, index, started]);
+  };
 
   const startCrossfade = (from: any, to: any) => {
+    if (fadeTimer.current) return;
+
     const nextIndex = index + 1;
     if (nextIndex >= playlist.length) return;
 
@@ -112,23 +121,28 @@ const Home: React.FC = () => {
     to.playVideo();
 
     let step = 0;
-    const steps = CROSSFADE_SECONDS * 10;
+    const steps = crossfadeSeconds * 10;
 
-    fadeRef.current = setInterval(() => {
+    fadeTimer.current = setInterval(() => {
       step++;
 
       from.setVolume(Math.max(0, 100 - (step * 100) / steps));
       to.setVolume(Math.min(100, (step * 100) / steps));
 
       if (step >= steps) {
-        clearInterval(fadeRef.current);
-        fadeRef.current = null;
+        clearInterval(fadeTimer.current);
+        fadeTimer.current = null;
 
         from.stopVideo();
         setIndex(nextIndex);
         setActiveDeck((d) => (d === 'A' ? 'B' : 'A'));
       }
     }, 100);
+  };
+
+  const forceNext = (from: any, to: any) => {
+    if (fadeTimer.current) return;
+    startCrossfade(from, to);
   };
 
   /* ================= CONTROLES ================= */
@@ -143,30 +157,16 @@ const Home: React.FC = () => {
     setIndex(0);
     setActiveDeck('A');
     setStarted(false);
-    pendingPlayRef.current = false;
-  };
-
-  const startDeckA = () => {
-    const player = deckARef.current;
-    if (!player) return;
-
-    player.loadVideoById(playlist[0]);
-    player.setVolume(100);
-    player.playVideo();
-
-    pendingPlayRef.current = false;
-    setStarted(true);
   };
 
   const startAutoDJ = () => {
     if (!playlist.length) return;
+    if (!deckARef.current) return;
 
-    if (!deckARef.current) {
-      pendingPlayRef.current = true;
-      return;
-    }
-
-    startDeckA();
+    deckARef.current.loadVideoById(playlist[0]);
+    deckARef.current.setVolume(100);
+    deckARef.current.playVideo();
+    setStarted(true);
   };
 
   /* ================= UI ================= */
@@ -175,45 +175,43 @@ const Home: React.FC = () => {
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold">Auto-DJ</h1>
 
-      <div className="space-y-2">
-        <Textarea
-          rows={6}
-          placeholder="Pegá una URL por línea"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
+      <Textarea
+        rows={6}
+        placeholder="Pegá una URL de YouTube por línea"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+      />
 
-        <div className="flex gap-2">
-          <Button onClick={loadPlaylist}>Cargar playlist</Button>
-          <Button onClick={startAutoDJ}>
-            ▶ Play Auto-DJ
-          </Button>
-        </div>
+      <div className="space-y-2">
+        <label className="text-sm font-medium">
+          Crossfade: {crossfadeSeconds}s
+        </label>
+        <Slider
+          min={2}
+          max={20}
+          step={1}
+          value={[crossfadeSeconds]}
+          onValueChange={([v]) => setCrossfadeSeconds(v)}
+        />
       </div>
 
-      {/* Players invisibles */}
+      <div className="flex gap-2">
+        <Button onClick={loadPlaylist}>Cargar playlist</Button>
+        <Button onClick={startAutoDJ}>▶ Play Auto-DJ</Button>
+      </div>
+
       <div className="hidden">
         <div ref={containerARef} />
         <div ref={containerBRef} />
       </div>
 
-      {playlist.length > 0 && (
-        <div className="text-sm space-y-1">
-          {playlist.map((id, i) => (
-            <div
-              key={id}
-              className={`px-2 py-1 rounded ${
-                i === index
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
-              }`}
-            >
-              {i + 1}. {id}
-              {i === index && ` (Deck ${activeDeck})`}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="space-y-1 text-sm">
+        {playlist.map((id, i) => (
+          <div key={id}>
+            {i + 1}. {id} {i === index && `(Deck ${activeDeck})`}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
