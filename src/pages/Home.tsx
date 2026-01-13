@@ -24,17 +24,22 @@ const extractVideoId = (url: string): string | null => {
   }
 };
 
+const CROSSFADE_SECONDS = 6;
+
 const Home: React.FC = () => {
   const [input, setInput] = useState('');
   const [playlist, setPlaylist] = useState<string[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [index, setIndex] = useState(0);
+  const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
 
-  const playerRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const deckARef = useRef<any>(null);
+  const deckBRef = useRef<any>(null);
+  const containerARef = useRef<HTMLDivElement>(null);
+  const containerBRef = useRef<HTMLDivElement>(null);
 
-  const currentVideoId = playlist[currentIndex];
+  const fadeIntervalRef = useRef<any>(null);
 
-  // Load YouTube API once
+  // Load YT API once
   useEffect(() => {
     if (window.YT) return;
 
@@ -45,34 +50,79 @@ const Home: React.FC = () => {
     window.onYouTubeIframeAPIReady = () => {};
   }, []);
 
-  // Create / load player
+  // Init players
   useEffect(() => {
-    if (!currentVideoId || !window.YT || !containerRef.current) return;
+    if (!window.YT || !containerARef.current || !containerBRef.current) return;
+    if (deckARef.current || deckBRef.current) return;
 
-    if (playerRef.current) {
-      playerRef.current.loadVideoById(currentVideoId);
-      return;
-    }
-
-    playerRef.current = new window.YT.Player(containerRef.current, {
-      videoId: currentVideoId,
-      playerVars: {
-        autoplay: 1,
-        controls: 1,
-      },
-      events: {
-        onReady: (e: any) => e.target.playVideo(),
-        onStateChange: (e: any) => {
-          // ENDED = 0
-          if (e.data === window.YT.PlayerState.ENDED) {
-            setCurrentIndex((i) =>
-              i + 1 < playlist.length ? i + 1 : i
-            );
-          }
-        },
-      },
+    deckARef.current = new window.YT.Player(containerARef.current, {
+      playerVars: { autoplay: 0, controls: 0 },
     });
-  }, [currentVideoId, playlist.length]);
+
+    deckBRef.current = new window.YT.Player(containerBRef.current, {
+      playerVars: { autoplay: 0, controls: 0 },
+    });
+  }, []);
+
+  // Start first track
+  useEffect(() => {
+    if (!playlist.length) return;
+    const player = activeDeck === 'A' ? deckARef.current : deckBRef.current;
+    if (!player) return;
+
+    player.loadVideoById(playlist[index]);
+    player.setVolume(100);
+    player.playVideo();
+  }, [playlist]);
+
+  // Monitor crossfade
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const active = activeDeck === 'A' ? deckARef.current : deckBRef.current;
+      const next = activeDeck === 'A' ? deckBRef.current : deckARef.current;
+      if (!active || !next) return;
+
+      const duration = active.getDuration?.();
+      const current = active.getCurrentTime?.();
+      if (!duration || !current) return;
+
+      if (duration - current <= CROSSFADE_SECONDS && !fadeIntervalRef.current) {
+        startCrossfade(active, next);
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [activeDeck, index]);
+
+  const startCrossfade = (from: any, to: any) => {
+    const nextIndex = index + 1;
+    if (nextIndex >= playlist.length) return;
+
+    to.loadVideoById(playlist[nextIndex]);
+    to.setVolume(0);
+    to.playVideo();
+
+    let step = 0;
+    const steps = CROSSFADE_SECONDS * 10;
+
+    fadeIntervalRef.current = setInterval(() => {
+      step++;
+      const fromVol = Math.max(0, 100 - (step * 100) / steps);
+      const toVol = Math.min(100, (step * 100) / steps);
+
+      from.setVolume(fromVol);
+      to.setVolume(toVol);
+
+      if (step >= steps) {
+        clearInterval(fadeIntervalRef.current);
+        fadeIntervalRef.current = null;
+
+        from.stopVideo();
+        setIndex(nextIndex);
+        setActiveDeck((d) => (d === 'A' ? 'B' : 'A'));
+      }
+    }, 100);
+  };
 
   const loadPlaylist = () => {
     const ids = input
@@ -81,46 +131,40 @@ const Home: React.FC = () => {
       .filter((v): v is string => Boolean(v));
 
     setPlaylist(ids);
-    setCurrentIndex(0);
+    setIndex(0);
+    setActiveDeck('A');
   };
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold">Auto-DJ</h1>
 
-      {/* Input */}
       <div className="space-y-2">
         <Textarea
           rows={6}
-          placeholder={`Pegá una URL por línea\nhttps://www.youtube.com/watch?v=xxxx`}
+          placeholder="Pegá una URL por línea"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
-        <Button onClick={loadPlaylist}>
-          Cargar playlist
-        </Button>
+        <Button onClick={loadPlaylist}>Cargar playlist</Button>
       </div>
 
-      {/* Player */}
-      {currentVideoId && (
-        <div className="aspect-video bg-black rounded overflow-hidden">
-          <div ref={containerRef} className="w-full h-full" />
-        </div>
-      )}
+      {/* Players (invisibles) */}
+      <div className="hidden">
+        <div ref={containerARef} />
+        <div ref={containerBRef} />
+      </div>
 
-      {/* Playlist */}
       {playlist.length > 0 && (
-        <div className="space-y-1 text-sm">
+        <div className="text-sm space-y-1">
           {playlist.map((id, i) => (
             <div
               key={id}
               className={`px-2 py-1 rounded ${
-                i === currentIndex
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
+                i === index ? 'bg-primary text-primary-foreground' : 'bg-muted'
               }`}
             >
-              {i + 1}. {id}
+              {i + 1}. {id} {i === index && `(Deck ${activeDeck})`}
             </div>
           ))}
         </div>
