@@ -40,6 +40,7 @@ const Home: React.FC = () => {
   const monitorTimer = useRef<any>(null);
 
   const readyCount = useRef(0);
+  const pendingPlayRef = useRef<'A' | 'B' | null>(null);
 
   /* ================= YT API ================= */
 
@@ -61,18 +62,18 @@ const Home: React.FC = () => {
     if (deckARef.current || deckBRef.current) return;
 
     deckARef.current = new window.YT.Player(containerARef.current, {
-      playerVars: { controls: 0 },
+      playerVars: { controls: 0, playsinline: 1 },
       events: {
         onReady: onPlayerReady,
-        onStateChange: onStateChangeA,
+        onStateChange: (e: any) => onStateChange(e, 'A'),
       },
     });
 
     deckBRef.current = new window.YT.Player(containerBRef.current, {
-      playerVars: { controls: 0 },
+      playerVars: { controls: 0, playsinline: 1 },
       events: {
         onReady: onPlayerReady,
-        onStateChange: onStateChangeB,
+        onStateChange: (e: any) => onStateChange(e, 'B'),
       },
     });
   };
@@ -86,23 +87,24 @@ const Home: React.FC = () => {
 
   /* ================= STATE CHANGE ================= */
 
-  const onStateChangeA = (e: any) => {
-    if (activeDeck !== 'A') return;
-    handleStateChange(e, deckARef.current, deckBRef.current);
-  };
+  const onStateChange = (e: any, deck: 'A' | 'B') => {
+    const player = deck === 'A' ? deckARef.current : deckBRef.current;
+    const other = deck === 'A' ? deckBRef.current : deckARef.current;
 
-  const onStateChangeB = (e: any) => {
-    if (activeDeck !== 'B') return;
-    handleStateChange(e, deckBRef.current, deckARef.current);
-  };
+    if (e.data === window.YT.PlayerState.CUED && pendingPlayRef.current === deck) {
+      pendingPlayRef.current = null;
+      player.playVideo();
+      return;
+    }
 
-  const handleStateChange = (e: any, from: any, to: any) => {
+    if (deck !== activeDeck) return;
+
     if (e.data === window.YT.PlayerState.PLAYING) {
-      startMonitoring(from, to);
+      startMonitoring(player, other);
     }
 
     if (e.data === window.YT.PlayerState.ENDED) {
-      forceNext(from, to);
+      startCrossfade(player, other);
     }
   };
 
@@ -128,11 +130,11 @@ const Home: React.FC = () => {
 
     const nextIndex = index + 1;
     if (nextIndex >= playlist.length) return;
-    if (!playersReady) return;
 
-    to.loadVideoById(playlist[nextIndex]);
+    pendingPlayRef.current = activeDeck === 'A' ? 'B' : 'A';
+
+    to.cueVideoById(playlist[nextIndex]);
     to.setVolume(0);
-    to.playVideo();
 
     let step = 0;
     const steps = crossfadeSeconds * 10;
@@ -154,11 +156,6 @@ const Home: React.FC = () => {
     }, 100);
   };
 
-  const forceNext = (from: any, to: any) => {
-    if (fadeTimer.current) return;
-    startCrossfade(from, to);
-  };
-
   /* ================= CONTROLES ================= */
 
   const loadPlaylist = () => {
@@ -173,8 +170,7 @@ const Home: React.FC = () => {
   };
 
   const startAutoDJ = () => {
-    if (!playersReady) return;
-    if (!playlist.length) return;
+    if (!playersReady || !playlist.length) return;
 
     deckARef.current.loadVideoById(playlist[0]);
     deckARef.current.setVolume(100);
@@ -212,14 +208,8 @@ const Home: React.FC = () => {
         <Button onClick={startAutoDJ} disabled={!playersReady}>
           ▶ Play Auto-DJ
         </Button>
-        {!playersReady && (
-          <span className="text-sm text-muted-foreground">
-            Inicializando players…
-          </span>
-        )}
       </div>
 
-      {/* ===== DECKS ===== */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {(['A', 'B'] as const).map((deck) => (
           <div
