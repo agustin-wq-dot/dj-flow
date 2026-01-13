@@ -26,6 +26,10 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+const isYouTubeUrl = (url: string): boolean => {
+  return /youtube\.com|youtu\.be/.test(url);
+};
+
 export const Deck: React.FC<DeckProps> = ({
   deckId,
   containerId,
@@ -44,16 +48,25 @@ export const Deck: React.FC<DeckProps> = ({
 
   // 🔊 Web Audio
   const audio = useDeckAudio();
-  const [audioUrl, setAudioUrl] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
 
-  // 🎛️ Source mode
-  const isAudioMode = audioUrl.trim().length > 0;
+  const isAudioMode =
+    sourceUrl.trim().length > 0 && !isYouTubeUrl(sourceUrl);
+
+  const handleLoad = () => {
+    if (isAudioMode) {
+      audio.load(sourceUrl);
+    } else {
+      // YouTube: la carga real ya la maneja el parent
+      onLoadNext();
+    }
+  };
 
   const handlePlay = () => {
     if (isAudioMode) {
       audio.play();
     } else {
-      onPlay(); // YouTube
+      onPlay();
     }
   };
 
@@ -61,7 +74,7 @@ export const Deck: React.FC<DeckProps> = ({
     if (isAudioMode) {
       audio.stop();
     } else {
-      onPause(); // YouTube
+      onPause();
     }
   };
 
@@ -92,26 +105,21 @@ export const Deck: React.FC<DeckProps> = ({
         </Button>
       </div>
 
-      {/* Source Indicator */}
+      {/* Source */}
       <div className="text-xs opacity-70">
         Source: {isAudioMode ? 'Audio URL' : 'YouTube'}
       </div>
 
-      {/* Audio URL */}
+      {/* URL Input */}
       <div className="space-y-2">
         <input
           className="w-full p-2 text-sm border rounded"
-          placeholder="URL de audio (mp3, wav)"
-          value={audioUrl}
-          onChange={(e) => setAudioUrl(e.target.value)}
+          placeholder="YouTube URL o audio (mp3, wav)"
+          value={sourceUrl}
+          onChange={(e) => setSourceUrl(e.target.value)}
         />
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={!audioUrl}
-          onClick={() => audio.load(audioUrl)}
-        >
-          Cargar Audio
+        <Button size="sm" variant="secondary" onClick={handleLoad}>
+          Cargar
         </Button>
       </div>
 
