@@ -27,8 +27,8 @@ const Home: React.FC = () => {
   const [playlist, setPlaylist] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
-  const [started, setStarted] = useState(false);
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(6);
+  const [playersReady, setPlayersReady] = useState(false);
 
   const deckARef = useRef<any>(null);
   const deckBRef = useRef<any>(null);
@@ -38,6 +38,8 @@ const Home: React.FC = () => {
 
   const fadeTimer = useRef<any>(null);
   const monitorTimer = useRef<any>(null);
+
+  const readyCount = useRef(0);
 
   /* ================= YT API ================= */
 
@@ -60,13 +62,26 @@ const Home: React.FC = () => {
 
     deckARef.current = new window.YT.Player(containerARef.current, {
       playerVars: { controls: 0 },
-      events: { onStateChange: onStateChangeA },
+      events: {
+        onReady: onPlayerReady,
+        onStateChange: onStateChangeA,
+      },
     });
 
     deckBRef.current = new window.YT.Player(containerBRef.current, {
       playerVars: { controls: 0 },
-      events: { onStateChange: onStateChangeB },
+      events: {
+        onReady: onPlayerReady,
+        onStateChange: onStateChangeB,
+      },
     });
+  };
+
+  const onPlayerReady = () => {
+    readyCount.current += 1;
+    if (readyCount.current === 2) {
+      setPlayersReady(true);
+    }
   };
 
   /* ================= STATE CHANGE ================= */
@@ -113,6 +128,7 @@ const Home: React.FC = () => {
 
     const nextIndex = index + 1;
     if (nextIndex >= playlist.length) return;
+    if (!playersReady) return;
 
     to.loadVideoById(playlist[nextIndex]);
     to.setVolume(0);
@@ -154,16 +170,15 @@ const Home: React.FC = () => {
     setPlaylist(ids);
     setIndex(0);
     setActiveDeck('A');
-    setStarted(false);
   };
 
   const startAutoDJ = () => {
-    if (!playlist.length || !deckARef.current) return;
+    if (!playersReady) return;
+    if (!playlist.length) return;
 
     deckARef.current.loadVideoById(playlist[0]);
     deckARef.current.setVolume(100);
     deckARef.current.playVideo();
-    setStarted(true);
   };
 
   /* ================= UI ================= */
@@ -194,7 +209,14 @@ const Home: React.FC = () => {
 
       <div className="flex gap-2">
         <Button onClick={loadPlaylist}>Cargar playlist</Button>
-        <Button onClick={startAutoDJ}>▶ Play Auto-DJ</Button>
+        <Button onClick={startAutoDJ} disabled={!playersReady}>
+          ▶ Play Auto-DJ
+        </Button>
+        {!playersReady && (
+          <span className="text-sm text-muted-foreground">
+            Inicializando players…
+          </span>
+        )}
       </div>
 
       {/* ===== DECKS ===== */}
