@@ -1,96 +1,114 @@
 import React, { useEffect, useRef, useState } from 'react';
+import YouTube from 'react-youtube';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
-declare global {
-  interface Window {
-    YT: any;
-    onYouTubeIframeAPIReady: () => void;
+const extractVideoId = (url: string): string | null => {
+  try {
+    const u = new URL(url.trim());
+    if (u.hostname.includes('youtube.com')) {
+      return u.searchParams.get('v');
+    }
+    if (u.hostname === 'youtu.be') {
+      return u.pathname.replace('/', '');
+    }
+    return null;
+  } catch {
+    return null;
   }
-}
+};
 
-interface Track {
-  id: string;
-  title: string;
-  youtubeId: string;
-}
-
-const PLAYLIST: Track[] = [
-  {
-    id: '1',
-    title: 'Metallica - Until It Sleeps',
-    youtubeId: 'FDmU6lpOpoE',
-  },
-  {
-    id: '2',
-    title: 'Metallica - Nothing Else Matters',
-    youtubeId: 'tAGnKpE4NCI',
-  },
-];
-
-export default function Home() {
-  const playerRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+const Home: React.FC = () => {
+  const [input, setInput] = useState('');
+  const [playlist, setPlaylist] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const currentTrack = PLAYLIST[currentIndex];
+  const playerRef = useRef<any>(null);
 
-  useEffect(() => {
-    if (window.YT && window.YT.Player) {
-      initPlayer();
-      return;
-    }
+  const currentVideoId = playlist[currentIndex];
 
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    document.body.appendChild(tag);
+  const loadPlaylist = () => {
+    const ids = input
+      .split('\n')
+      .map(extractVideoId)
+      .filter((v): v is string => Boolean(v));
 
-    window.onYouTubeIframeAPIReady = initPlayer;
-  }, []);
+    setPlaylist(ids);
+    setCurrentIndex(0);
+  };
 
-  const initPlayer = () => {
-    if (!containerRef.current) return;
+  const onReady = (event: any) => {
+    playerRef.current = event.target;
+    event.target.playVideo();
+  };
 
-    playerRef.current = new window.YT.Player(containerRef.current, {
-      videoId: currentTrack.youtubeId,
-      playerVars: {
-        autoplay: 1,
-        controls: 1,
-        rel: 0,
-      },
-      events: {
-        onStateChange: (event: any) => {
-          // 0 = ended
-          if (event.data === 0) {
-            playNext();
-          }
-        },
-      },
+  const onEnd = () => {
+    setCurrentIndex((prev) => {
+      if (prev + 1 < playlist.length) {
+        return prev + 1;
+      }
+      return prev; // fin de playlist
     });
   };
 
-  const playNext = () => {
-    const nextIndex = (currentIndex + 1) % PLAYLIST.length;
-    setCurrentIndex(nextIndex);
-    playerRef.current.loadVideoById(
-      PLAYLIST[nextIndex].youtubeId
-    );
-  };
+  useEffect(() => {
+    if (playerRef.current && currentVideoId) {
+      playerRef.current.loadVideoById(currentVideoId);
+    }
+  }, [currentVideoId]);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">Auto DJ</h1>
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Auto-DJ</h1>
 
-      <div className="aspect-video bg-black rounded-lg overflow-hidden">
-        <div ref={containerRef} className="w-full h-full" />
+      {/* Input playlist */}
+      <div className="space-y-2">
+        <Textarea
+          placeholder={`Pegá una URL por línea\nhttps://www.youtube.com/watch?v=xxxx`}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          rows={6}
+        />
+        <Button onClick={loadPlaylist}>Cargar playlist</Button>
       </div>
 
-      <div className="text-sm opacity-80">
-        Reproduciendo: {currentTrack.title}
-      </div>
+      {/* Player */}
+      {currentVideoId && (
+        <div className="aspect-video bg-black rounded overflow-hidden">
+          <YouTube
+            videoId={currentVideoId}
+            onReady={onReady}
+            onEnd={onEnd}
+            opts={{
+              width: '100%',
+              height: '100%',
+              playerVars: {
+                autoplay: 1,
+              },
+            }}
+          />
+        </div>
+      )}
 
-      <div className="text-xs opacity-60">
-        Modo automático – reproducción continua
-      </div>
+      {/* Playlist visual */}
+      {playlist.length > 0 && (
+        <div className="space-y-1 text-sm">
+          {playlist.map((id, i) => (
+            <div
+              key={id}
+              className={`px-2 py-1 rounded ${
+                i === currentIndex
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted'
+              }`}
+            >
+              {i + 1}. {id}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
-}
+};
 
+export default Home;
