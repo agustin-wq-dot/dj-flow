@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
+import { cn } from '@/lib/utils';
 
 declare global {
   interface Window {
@@ -27,8 +28,6 @@ const Home: React.FC = () => {
   const [index, setIndex] = useState(0);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
   const [started, setStarted] = useState(false);
-
-  // 🔥 CROSSFADE CONTROLADO POR SLIDER
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(6);
 
   const deckARef = useRef<any>(null);
@@ -100,7 +99,6 @@ const Home: React.FC = () => {
     monitorTimer.current = setInterval(() => {
       const duration = from.getDuration();
       const current = from.getCurrentTime();
-
       if (!duration || !current) return;
 
       if (duration - current <= crossfadeSeconds) {
@@ -160,8 +158,7 @@ const Home: React.FC = () => {
   };
 
   const startAutoDJ = () => {
-    if (!playlist.length) return;
-    if (!deckARef.current) return;
+    if (!playlist.length || !deckARef.current) return;
 
     deckARef.current.loadVideoById(playlist[0]);
     deckARef.current.setVolume(100);
@@ -172,11 +169,11 @@ const Home: React.FC = () => {
   /* ================= UI ================= */
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold">Auto-DJ</h1>
 
       <Textarea
-        rows={6}
+        rows={5}
         placeholder="Pegá una URL de YouTube por línea"
         value={input}
         onChange={(e) => setInput(e.target.value)}
@@ -200,15 +197,31 @@ const Home: React.FC = () => {
         <Button onClick={startAutoDJ}>▶ Play Auto-DJ</Button>
       </div>
 
-      <div className="hidden">
-        <div ref={containerARef} />
-        <div ref={containerBRef} />
-      </div>
+      {/* ===== DECKS ===== */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {(['A', 'B'] as const).map((deck) => (
+          <div
+            key={deck}
+            className={cn(
+              'rounded-xl border p-3 space-y-2',
+              activeDeck === deck
+                ? 'border-green-500 bg-green-500/5'
+                : 'border-muted'
+            )}
+          >
+            <div className="font-semibold">
+              Deck {deck}{' '}
+              {activeDeck === deck && (
+                <span className="text-green-500">(ON AIR)</span>
+              )}
+            </div>
 
-      <div className="space-y-1 text-sm">
-        {playlist.map((id, i) => (
-          <div key={id}>
-            {i + 1}. {id} {i === index && `(Deck ${activeDeck})`}
+            <div className="aspect-video bg-black rounded overflow-hidden">
+              <div
+                ref={deck === 'A' ? containerARef : containerBRef}
+                className="w-full h-full"
+              />
+            </div>
           </div>
         ))}
       </div>
