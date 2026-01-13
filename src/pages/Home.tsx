@@ -40,7 +40,6 @@ const Home: React.FC = () => {
   const monitorTimer = useRef<any>(null);
 
   const readyCount = useRef(0);
-  const pendingPlayRef = useRef<'A' | 'B' | null>(null);
 
   /* ================= YT API ================= */
 
@@ -61,8 +60,15 @@ const Home: React.FC = () => {
     if (!containerARef.current || !containerBRef.current) return;
     if (deckARef.current || deckBRef.current) return;
 
+    const commonVars = {
+      controls: 0,
+      playsinline: 1,
+      origin: window.location.origin,
+      mute: 1, // 🔥 CLAVE
+    };
+
     deckARef.current = new window.YT.Player(containerARef.current, {
-      playerVars: { controls: 0, playsinline: 1 },
+      playerVars: commonVars,
       events: {
         onReady: onPlayerReady,
         onStateChange: (e: any) => onStateChange(e, 'A'),
@@ -70,7 +76,7 @@ const Home: React.FC = () => {
     });
 
     deckBRef.current = new window.YT.Player(containerBRef.current, {
-      playerVars: { controls: 0, playsinline: 1 },
+      playerVars: commonVars,
       events: {
         onReady: onPlayerReady,
         onStateChange: (e: any) => onStateChange(e, 'B'),
@@ -78,7 +84,9 @@ const Home: React.FC = () => {
     });
   };
 
-  const onPlayerReady = () => {
+  const onPlayerReady = (e: any) => {
+    // Aseguramos mute explícito
+    e.target.mute();
     readyCount.current += 1;
     if (readyCount.current === 2) {
       setPlayersReady(true);
@@ -90,12 +98,6 @@ const Home: React.FC = () => {
   const onStateChange = (e: any, deck: 'A' | 'B') => {
     const player = deck === 'A' ? deckARef.current : deckBRef.current;
     const other = deck === 'A' ? deckBRef.current : deckARef.current;
-
-    if (e.data === window.YT.PlayerState.CUED && pendingPlayRef.current === deck) {
-      pendingPlayRef.current = null;
-      player.playVideo();
-      return;
-    }
 
     if (deck !== activeDeck) return;
 
@@ -131,10 +133,9 @@ const Home: React.FC = () => {
     const nextIndex = index + 1;
     if (nextIndex >= playlist.length) return;
 
-    pendingPlayRef.current = activeDeck === 'A' ? 'B' : 'A';
-
-    to.cueVideoById(playlist[nextIndex]);
-    to.setVolume(0);
+    to.loadVideoById(playlist[nextIndex]);
+    to.mute();
+    to.playVideo();
 
     let step = 0;
     const steps = crossfadeSeconds * 10;
@@ -144,6 +145,10 @@ const Home: React.FC = () => {
 
       from.setVolume(Math.max(0, 100 - (step * 100) / steps));
       to.setVolume(Math.min(100, (step * 100) / steps));
+
+      if (step === Math.floor(steps / 2)) {
+        to.unMute();
+      }
 
       if (step >= steps) {
         clearInterval(fadeTimer.current);
@@ -175,6 +180,7 @@ const Home: React.FC = () => {
     deckARef.current.loadVideoById(playlist[0]);
     deckARef.current.setVolume(100);
     deckARef.current.playVideo();
+    deckARef.current.unMute();
   };
 
   /* ================= UI ================= */
