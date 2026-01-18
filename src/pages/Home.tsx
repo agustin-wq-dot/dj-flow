@@ -22,6 +22,16 @@ const extractVideoId = (url: string): string | null => {
   }
 };
 
+// YouTube player states
+const YT_STATES: Record<number, string> = {
+  [-1]: 'UNSTARTED',
+  [0]: 'ENDED',
+  [1]: 'PLAYING',
+  [2]: 'PAUSED',
+  [3]: 'BUFFERING',
+  [5]: 'CUED',
+};
+
 const Home: React.FC = () => {
   const [input, setInput] = useState('');
   const [playlist, setPlaylist] = useState<string[]>([]);
@@ -30,6 +40,13 @@ const Home: React.FC = () => {
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(6);
   const [playersReady, setPlayersReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  
+  // Debug state
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [deckAState, setDeckAState] = useState({ state: 'INIT', time: 0, duration: 0, volume: 0 });
+  const [deckBState, setDeckBState] = useState({ state: 'INIT', time: 0, duration: 0, volume: 0 });
+  const [fadeProgress, setFadeProgress] = useState(0);
+  const [nextTrackPreloaded, setNextTrackPreloaded] = useState(false);
 
   const deckARef = useRef<any>(null);
   const deckBRef = useRef<any>(null);
@@ -38,6 +55,7 @@ const Home: React.FC = () => {
 
   const fadeTimer = useRef<any>(null);
   const monitorTimer = useRef<any>(null);
+  const debugTimer = useRef<any>(null);
   const readyCount = useRef(0);
 
   // Refs to track current state in callbacks
@@ -46,12 +64,42 @@ const Home: React.FC = () => {
   const activeDeckRef = useRef<'A' | 'B'>('A');
   const crossfadeSecondsRef = useRef(6);
   const isFading = useRef(false);
+  const preloadedRef = useRef(false);
+
+  // Debug log function
+  const log = useCallback((msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[AutoDJ ${timestamp}] ${msg}`);
+    setDebugLogs(prev => [...prev.slice(-19), `${timestamp} - ${msg}`]);
+  }, []);
 
   // Sync refs with state
   useEffect(() => { playlistRef.current = playlist; }, [playlist]);
   useEffect(() => { indexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { activeDeckRef.current = activeDeck; }, [activeDeck]);
   useEffect(() => { crossfadeSecondsRef.current = crossfadeSeconds; }, [crossfadeSeconds]);
+
+  // Debug timer to update deck states
+  useEffect(() => {
+    debugTimer.current = setInterval(() => {
+      if (deckARef.current?.getPlayerState) {
+        const state = deckARef.current.getPlayerState?.() ?? -1;
+        const time = deckARef.current.getCurrentTime?.() ?? 0;
+        const duration = deckARef.current.getDuration?.() ?? 0;
+        const volume = deckARef.current.getVolume?.() ?? 0;
+        setDeckAState({ state: YT_STATES[state] || 'UNKNOWN', time, duration, volume });
+      }
+      if (deckBRef.current?.getPlayerState) {
+        const state = deckBRef.current.getPlayerState?.() ?? -1;
+        const time = deckBRef.current.getCurrentTime?.() ?? 0;
+        const duration = deckBRef.current.getDuration?.() ?? 0;
+        const volume = deckBRef.current.getVolume?.() ?? 0;
+        setDeckBState({ state: YT_STATES[state] || 'UNKNOWN', time, duration, volume });
+      }
+    }, 200);
+
+    return () => clearInterval(debugTimer.current);
+  }, []);
 
   /* ================= YT API ================= */
 
@@ -111,83 +159,148 @@ const Home: React.FC = () => {
     readyCount.current += 1;
     if (readyCount.current === 2) {
       setPlayersReady(true);
+      log('✅ Ambos players listos');
     }
   };
 
   /* ================= PLAYER STATE HANDLER ================= */
 
   const handlePlayerState = useCallback((e: any, deck: 'A' | 'B') => {
-    // Only handle events from the active deck
-    if (deck !== activeDeckRef.current) return;
+    const stateName = YT_STATES[e.data] || 'UNKNOWN';
+    
+    // Log all state changes for debugging
+    log(`Deck ${deck}: ${stateName}`);
 
-    const activePlayer = deck === 'A' ? deckARef.current : deckBRef.current;
-    const nextPlayer = deck === 'A' ? deckBRef.current : deckARef.current;
-
-    if (e.data === window.YT.PlayerState.PLAYING) {
-      setIsPlaying(true);
-      startMonitoring(activePlayer, nextPlayer);
+    // Handle CUED state for preloaded track
+    if (e.data === 5) { // CUED
+      if (deck !== activeDeckRef.current) {
+        log(`✅ Deck ${deck} precargado y listo`);
+        setNextTrackPreloaded(true);
+      }
     }
 
-    if (e.data === window.YT.PlayerState.ENDED) {
-      triggerCrossfade();
+    // Only handle PLAYING events from the active deck for monitoring
+    if (deck === activeDeckRef.current && e.data === 1) { // PLAYING
+      setIsPlaying(true);
+      log(`▶ Deck ${deck} reproduciendo, iniciando monitoreo`);
+      startMonitoring();
     }
   }, []);
 
+  /* ================= PRELOAD NEXT TRACK ================= */
+
+  const preloadNextTrack = useCallback(() => {
+    if (preloadedRef.current) return;
+    
+    const nextIdx = indexRef.current + 1;
+    if (nextIdx >= playlistRef.current.length) {
+      log('📋 No hay más tracks para precargar');
+      return;
+    }
+
+    const inactivePlayer = activeDeckRef.current === 'A' 
+      ? deckBRef.current 
+      : deckARef.current;
+    
+    const inactiveDeck = activeDeckRef.current === 'A' ? 'B' : 'A';
+
+    if (!inactivePlayer?.cueVideoById) return;
+
+    log(`📥 Precargando track ${nextIdx + 1} en Deck ${inactiveDeck}`);
+    
+    // cueVideoById loads without playing
+    inactivePlayer.cueVideoById(playlistRef.current[nextIdx]);
+    inactivePlayer.setVolume(0);
+    preloadedRef.current = true;
+  }, [log]);
+
   /* ================= MONITORING ================= */
 
-  const startMonitoring = useCallback((from: any, to: any) => {
+  const startMonitoring = useCallback(() => {
     clearInterval(monitorTimer.current);
+    preloadedRef.current = false;
+    setNextTrackPreloaded(false);
+
+    const activePlayer = activeDeckRef.current === 'A' ? deckARef.current : deckBRef.current;
 
     monitorTimer.current = setInterval(() => {
-      if (!from || typeof from.getDuration !== 'function') return;
+      if (!activePlayer || typeof activePlayer.getDuration !== 'function') return;
       
-      const duration = from.getDuration();
-      const current = from.getCurrentTime();
+      const duration = activePlayer.getDuration();
+      const current = activePlayer.getCurrentTime();
       
       if (!duration || duration <= 0) return;
 
       const remaining = duration - current;
+      const preloadTime = crossfadeSecondsRef.current + 5;
+
+      // Preload 5 seconds before crossfade starts
+      if (remaining <= preloadTime && !preloadedRef.current) {
+        preloadNextTrack();
+      }
       
+      // Trigger crossfade
       if (remaining <= crossfadeSecondsRef.current && remaining > 0 && !isFading.current) {
         clearInterval(monitorTimer.current);
+        log(`⏱ Tiempo restante: ${remaining.toFixed(1)}s - Iniciando crossfade`);
         triggerCrossfade();
       }
     }, 300);
-  }, []);
+  }, [preloadNextTrack, log]);
 
-  /* ================= CROSSFADE ================= */
+  /* ================= CROSSFADE WITH EQUAL-POWER CURVE ================= */
 
   const triggerCrossfade = useCallback(() => {
-    if (isFading.current) return;
+    if (isFading.current) {
+      log('⚠ Ya hay un crossfade en progreso');
+      return;
+    }
 
     const nextIdx = indexRef.current + 1;
     if (nextIdx >= playlistRef.current.length) {
-      // End of playlist
+      log('🏁 Fin de la playlist');
       setIsPlaying(false);
       return;
     }
 
     isFading.current = true;
+    log(`🔄 Crossfade: Track ${indexRef.current + 1} → Track ${nextIdx + 1}`);
 
     const currentDeck = activeDeckRef.current;
     const fromPlayer = currentDeck === 'A' ? deckARef.current : deckBRef.current;
     const toPlayer = currentDeck === 'A' ? deckBRef.current : deckARef.current;
+    const toDeck = currentDeck === 'A' ? 'B' : 'A';
 
-    // Load and prepare next track
-    toPlayer.loadVideoById(playlistRef.current[nextIdx]);
+    // If not preloaded, load now (fallback)
+    if (!preloadedRef.current) {
+      log(`⚠ Track no precargado, cargando ahora en Deck ${toDeck}`);
+      toPlayer.loadVideoById(playlistRef.current[nextIdx]);
+    } else {
+      // Start playback of the preloaded (cued) video
+      log(`▶ Iniciando reproducción en Deck ${toDeck}`);
+      toPlayer.playVideo();
+    }
+    
     toPlayer.setVolume(0);
 
     let step = 0;
-    const totalSteps = crossfadeSecondsRef.current * 10;
+    const totalSteps = crossfadeSecondsRef.current * 10; // 10 steps per second
 
     fadeTimer.current = setInterval(() => {
       step++;
 
-      const fadeOutVol = Math.max(0, 100 - (step * 100) / totalSteps);
-      const fadeInVol = Math.min(100, (step * 100) / totalSteps);
+      // Progress ratio from 0 to 1
+      const t = step / totalSteps;
 
-      fromPlayer.setVolume(fadeOutVol);
-      toPlayer.setVolume(fadeInVol);
+      // Equal-power crossfade curve
+      // This maintains constant perceived loudness during the fade
+      const fadeOutVol = Math.cos(t * Math.PI / 2) * 100;
+      const fadeInVol = Math.sin(t * Math.PI / 2) * 100;
+
+      fromPlayer.setVolume(Math.round(fadeOutVol));
+      toPlayer.setVolume(Math.round(fadeInVol));
+      
+      setFadeProgress(Math.round(t * 100));
 
       if (step >= totalSteps) {
         clearInterval(fadeTimer.current);
@@ -205,12 +318,17 @@ const Home: React.FC = () => {
         indexRef.current = nextIdx;
         
         isFading.current = false;
+        preloadedRef.current = false;
+        setNextTrackPreloaded(false);
+        setFadeProgress(0);
+
+        log(`✅ Crossfade completado - Deck ${newDeck} activo`);
 
         // Start monitoring the new active player
-        startMonitoring(toPlayer, fromPlayer);
+        startMonitoring();
       }
     }, 100);
-  }, [startMonitoring]);
+  }, [startMonitoring, log]);
 
   /* ================= START PLAYBACK ================= */
 
@@ -221,7 +339,12 @@ const Home: React.FC = () => {
       .map(extractVideoId)
       .filter((v): v is string => Boolean(v));
 
-    if (!ids.length) return;
+    if (!ids.length) {
+      log('⚠ No se encontraron URLs válidas');
+      return;
+    }
+
+    log(`🎵 Iniciando Auto-DJ con ${ids.length} tracks`);
 
     // Reset state
     setPlaylist(ids);
@@ -231,6 +354,9 @@ const Home: React.FC = () => {
     setActiveDeck('A');
     activeDeckRef.current = 'A';
     isFading.current = false;
+    preloadedRef.current = false;
+    setNextTrackPreloaded(false);
+    setFadeProgress(0);
 
     clearInterval(monitorTimer.current);
     clearInterval(fadeTimer.current);
@@ -238,6 +364,7 @@ const Home: React.FC = () => {
     // Start playback on Deck A
     const startPlayback = () => {
       if (deckARef.current && typeof deckARef.current.loadVideoById === 'function') {
+        log('▶ Cargando primer track en Deck A');
         deckARef.current.loadVideoById(ids[0]);
         deckARef.current.setVolume(100);
       } else {
@@ -246,9 +373,20 @@ const Home: React.FC = () => {
     };
 
     startPlayback();
-  }, [input]);
+  }, [input, log]);
 
   /* ================= UI ================= */
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const getTimeRemaining = (state: { time: number; duration: number }) => {
+    if (!state.duration) return '--:--';
+    return formatTime(state.duration - state.time);
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -263,7 +401,7 @@ const Home: React.FC = () => {
 
       <div className="space-y-2">
         <label className="text-sm font-medium">
-          Crossfade: {crossfadeSeconds}s
+          Crossfade: {crossfadeSeconds}s (Equal-Power)
         </label>
         <Slider
           min={2}
@@ -274,7 +412,7 @@ const Home: React.FC = () => {
         />
       </div>
 
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
         <Button onClick={startAutoDJ} disabled={!playersReady || !input.trim()}>
           ▶ Play Auto-DJ
         </Button>
@@ -283,34 +421,96 @@ const Home: React.FC = () => {
             Track {currentIndex + 1} de {playlist.length}
           </span>
         )}
+        {isFading.current && (
+          <span className="text-sm text-primary font-medium">
+            🔄 Crossfade: {fadeProgress}%
+          </span>
+        )}
+        {nextTrackPreloaded && !isFading.current && (
+          <span className="text-sm text-green-500">
+            ✓ Siguiente precargado
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {(['A', 'B'] as const).map((deck) => (
-          <div
-            key={deck}
-            className={cn(
-              'rounded-xl border p-3 space-y-2',
-              activeDeck === deck
-                ? 'border-green-500 bg-green-500/5'
-                : 'border-muted'
-            )}
-          >
-            <div className="font-semibold">
-              Deck {deck}{' '}
-              {activeDeck === deck && isPlaying && (
-                <span className="text-green-500">(ON AIR)</span>
+        {(['A', 'B'] as const).map((deck) => {
+          const deckState = deck === 'A' ? deckAState : deckBState;
+          const isActive = activeDeck === deck;
+          
+          return (
+            <div
+              key={deck}
+              className={cn(
+                'rounded-xl border p-3 space-y-2',
+                isActive && isPlaying
+                  ? 'border-green-500 bg-green-500/5'
+                  : 'border-muted'
               )}
-            </div>
+            >
+              <div className="flex justify-between items-center">
+                <div className="font-semibold">
+                  Deck {deck}{' '}
+                  {isActive && isPlaying && (
+                    <span className="text-green-500">(ON AIR)</span>
+                  )}
+                </div>
+                <div className="text-xs font-mono text-muted-foreground">
+                  {deckState.state}
+                </div>
+              </div>
 
-            <div className="aspect-video bg-black rounded overflow-hidden">
-              <div
-                ref={deck === 'A' ? containerARef : containerBRef}
-                className="w-full h-full"
-              />
+              <div className="aspect-video bg-black rounded overflow-hidden">
+                <div
+                  ref={deck === 'A' ? containerARef : containerBRef}
+                  className="w-full h-full"
+                />
+              </div>
+
+              {/* Deck stats */}
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="bg-muted/50 rounded p-2">
+                  <div className="text-muted-foreground">Tiempo</div>
+                  <div className="font-mono">{formatTime(deckState.time)}</div>
+                </div>
+                <div className="bg-muted/50 rounded p-2">
+                  <div className="text-muted-foreground">Restante</div>
+                  <div className="font-mono">{getTimeRemaining(deckState)}</div>
+                </div>
+                <div className="bg-muted/50 rounded p-2">
+                  <div className="text-muted-foreground">Volumen</div>
+                  <div className="font-mono">{Math.round(deckState.volume)}%</div>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+      </div>
+
+      {/* Debug panel */}
+      <div className="border rounded-lg p-3 bg-muted/30">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-semibold text-sm">Debug Log</h3>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setDebugLogs([])}
+            className="h-6 text-xs"
+          >
+            Limpiar
+          </Button>
+        </div>
+        <div className="h-32 overflow-y-auto font-mono text-xs space-y-0.5">
+          {debugLogs.length === 0 ? (
+            <div className="text-muted-foreground">Sin logs aún...</div>
+          ) : (
+            debugLogs.map((logEntry, i) => (
+              <div key={i} className="text-muted-foreground">
+                {logEntry}
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
