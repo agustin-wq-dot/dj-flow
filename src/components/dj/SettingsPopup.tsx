@@ -49,8 +49,8 @@ const SettingsPopup: React.FC<SettingsPopupProps> = ({
               </span>
             </div>
             <Slider
-              min={6}
-              max={20}
+              min={10}
+              max={60}
               step={1}
               value={[crossfadeDuration]}
               onValueChange={([v]) => onCrossfadeDurationChange(v)}
