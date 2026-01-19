@@ -37,7 +37,7 @@ const Home: React.FC = () => {
   const [playlist, setPlaylist] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
-  const [crossfadeSeconds, setCrossfadeSeconds] = useState(58);
+  const [crossfadeSeconds, setCrossfadeSeconds] = useState(60);
   const [triggerVolume, setTriggerVolume] = useState(70);
   const [playersReady, setPlayersReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
