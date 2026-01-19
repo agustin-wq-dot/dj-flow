@@ -289,9 +289,16 @@ const Home: React.FC = () => {
     let step = 0;
     const totalSteps = crossfadeSecondsRef.current * 10; // 10 steps per second
     
-    // Calculate the trigger point: when fadeOut reaches triggerVolume, fadeIn becomes audible
-    // triggerVolume = 70% means the trigger point is at (100 - 70) / 100 = 0.3 of the fade
-    const triggerPoint = (100 - triggerVolumeRef.current) / 100;
+    // triggerVolume = 85% significa: cuando el saliente baja a 85%, el entrante empieza a sonar fuerte
+    // Phase 1: Saliente baja de 100% a triggerVolume%, entrante permanece en 0% (silencio)
+    // Phase 2: Crossfade real con equal-power curve
+    const triggerVol = triggerVolumeRef.current;
+    // triggerPoint = proporción del tiempo donde saliente alcanza triggerVolume
+    // Si triggerVolume = 85%, queremos que phase1 sea corta (solo bajar 15%)
+    // Si triggerVolume = 10%, queremos que phase1 sea larga (bajar 90%)
+    const triggerPoint = (100 - triggerVol) / 100;
+
+    log(`📊 Crossfade config: duration=${crossfadeSecondsRef.current}s, triggerVol=${triggerVol}%, triggerPoint=${(triggerPoint * 100).toFixed(0)}%`);
 
     fadeTimer.current = setInterval(() => {
       step++;
@@ -303,17 +310,20 @@ const Home: React.FC = () => {
       let fadeInVol: number;
 
       if (t <= triggerPoint) {
-        // Phase 1: Deck saliente baja de 100% a triggerVolume%, entrante sube suavemente hasta ~30%
-        const phase1T = t / triggerPoint;
-        // Equal-power curve for phase 1
-        fadeOutVol = 100 - (100 - triggerVolumeRef.current) * Math.sin(phase1T * Math.PI / 2);
-        fadeInVol = Math.sin(phase1T * Math.PI / 4) * 30; // Max 30% en esta fase
+        // Phase 1: Saliente baja de 100% a triggerVolume%, entrante permanece MUDO
+        // Usamos curva lineal para esta fase de "preparación"
+        const phase1Progress = t / triggerPoint;
+        fadeOutVol = 100 - (100 - triggerVol) * phase1Progress;
+        fadeInVol = 0; // Entrante todavía no suena
       } else {
-        // Phase 2: Crossfade real - saliente de triggerVolume% a 0%, entrante de 30% a 100%
-        const phase2T = (t - triggerPoint) / (1 - triggerPoint);
-        // Equal-power curves for the final crossfade
-        fadeOutVol = Math.cos(phase2T * Math.PI / 2) * triggerVolumeRef.current;
-        fadeInVol = 30 + Math.sin(phase2T * Math.PI / 2) * 70;
+        // Phase 2: Crossfade real con equal-power curve
+        // Saliente: triggerVolume% → 0%
+        // Entrante: 0% → 100%
+        const phase2Progress = (t - triggerPoint) / (1 - triggerPoint);
+        
+        // Equal-power curves: cos para saliente, sin para entrante
+        fadeOutVol = Math.cos(phase2Progress * Math.PI / 2) * triggerVol;
+        fadeInVol = Math.sin(phase2Progress * Math.PI / 2) * 100;
       }
 
       fromPlayer.setVolume(Math.round(fadeOutVol));
