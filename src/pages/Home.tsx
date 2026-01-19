@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
+import SettingsPopup from '@/components/dj/SettingsPopup';
 
 declare global {
   interface Window {
@@ -38,6 +38,7 @@ const Home: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(6);
+  const [triggerVolume, setTriggerVolume] = useState(70);
   const [playersReady, setPlayersReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   
@@ -63,6 +64,7 @@ const Home: React.FC = () => {
   const indexRef = useRef(0);
   const activeDeckRef = useRef<'A' | 'B'>('A');
   const crossfadeSecondsRef = useRef(6);
+  const triggerVolumeRef = useRef(70);
   const isFading = useRef(false);
   const preloadedRef = useRef(false);
 
@@ -78,6 +80,7 @@ const Home: React.FC = () => {
   useEffect(() => { indexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { activeDeckRef.current = activeDeck; }, [activeDeck]);
   useEffect(() => { crossfadeSecondsRef.current = crossfadeSeconds; }, [crossfadeSeconds]);
+  useEffect(() => { triggerVolumeRef.current = triggerVolume; }, [triggerVolume]);
 
   // Debug timer to update deck states
   useEffect(() => {
@@ -248,7 +251,7 @@ const Home: React.FC = () => {
     }, 300);
   }, [preloadNextTrack, log]);
 
-  /* ================= CROSSFADE WITH EQUAL-POWER CURVE ================= */
+  /* ================= CROSSFADE WITH TWO-PHASE EQUAL-POWER CURVE ================= */
 
   const triggerCrossfade = useCallback(() => {
     if (isFading.current) {
@@ -264,7 +267,7 @@ const Home: React.FC = () => {
     }
 
     isFading.current = true;
-    log(`🔄 Crossfade: Track ${indexRef.current + 1} → Track ${nextIdx + 1}`);
+    log(`🔄 Crossfade: Track ${indexRef.current + 1} → Track ${nextIdx + 1} (trigger: ${triggerVolumeRef.current}%)`);
 
     const currentDeck = activeDeckRef.current;
     const fromPlayer = currentDeck === 'A' ? deckARef.current : deckBRef.current;
@@ -285,6 +288,10 @@ const Home: React.FC = () => {
 
     let step = 0;
     const totalSteps = crossfadeSecondsRef.current * 10; // 10 steps per second
+    
+    // Calculate the trigger point: when fadeOut reaches triggerVolume, fadeIn becomes audible
+    // triggerVolume = 70% means the trigger point is at (100 - 70) / 100 = 0.3 of the fade
+    const triggerPoint = (100 - triggerVolumeRef.current) / 100;
 
     fadeTimer.current = setInterval(() => {
       step++;
@@ -292,10 +299,22 @@ const Home: React.FC = () => {
       // Progress ratio from 0 to 1
       const t = step / totalSteps;
 
-      // Equal-power crossfade curve
-      // This maintains constant perceived loudness during the fade
-      const fadeOutVol = Math.cos(t * Math.PI / 2) * 100;
-      const fadeInVol = Math.sin(t * Math.PI / 2) * 100;
+      let fadeOutVol: number;
+      let fadeInVol: number;
+
+      if (t <= triggerPoint) {
+        // Phase 1: Deck saliente baja de 100% a triggerVolume%, entrante sube suavemente hasta ~30%
+        const phase1T = t / triggerPoint;
+        // Equal-power curve for phase 1
+        fadeOutVol = 100 - (100 - triggerVolumeRef.current) * Math.sin(phase1T * Math.PI / 2);
+        fadeInVol = Math.sin(phase1T * Math.PI / 4) * 30; // Max 30% en esta fase
+      } else {
+        // Phase 2: Crossfade real - saliente de triggerVolume% a 0%, entrante de 30% a 100%
+        const phase2T = (t - triggerPoint) / (1 - triggerPoint);
+        // Equal-power curves for the final crossfade
+        fadeOutVol = Math.cos(phase2T * Math.PI / 2) * triggerVolumeRef.current;
+        fadeInVol = 30 + Math.sin(phase2T * Math.PI / 2) * 70;
+      }
 
       fromPlayer.setVolume(Math.round(fadeOutVol));
       toPlayer.setVolume(Math.round(fadeInVol));
@@ -308,6 +327,9 @@ const Home: React.FC = () => {
 
         fromPlayer.stopVideo();
         fromPlayer.setVolume(0);
+        
+        // Ensure toPlayer is at full volume
+        toPlayer.setVolume(100);
         
         // Switch active deck
         const newDeck = currentDeck === 'A' ? 'B' : 'A';
@@ -390,7 +412,15 @@ const Home: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Auto-DJ</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Auto-DJ</h1>
+        <SettingsPopup
+          crossfadeDuration={crossfadeSeconds}
+          onCrossfadeDurationChange={setCrossfadeSeconds}
+          triggerVolume={triggerVolume}
+          onTriggerVolumeChange={setTriggerVolume}
+        />
+      </div>
 
       <Textarea
         rows={5}
@@ -398,19 +428,6 @@ const Home: React.FC = () => {
         value={input}
         onChange={(e) => setInput(e.target.value)}
       />
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium">
-          Crossfade: {crossfadeSeconds}s (Equal-Power)
-        </label>
-        <Slider
-          min={2}
-          max={20}
-          step={1}
-          value={[crossfadeSeconds]}
-          onValueChange={([v]) => setCrossfadeSeconds(v)}
-        />
-      </div>
 
       <div className="flex gap-2 items-center flex-wrap">
         <Button onClick={startAutoDJ} disabled={!playersReady || !input.trim()}>
