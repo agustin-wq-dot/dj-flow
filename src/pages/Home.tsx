@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import SettingsPopup from '@/components/dj/SettingsPopup';
+import { LiveQueue } from '@/components/dj/LiveQueue';
+import { Track } from '@/types/Track';
 
 declare global {
   interface Window {
@@ -22,6 +23,27 @@ const extractVideoId = (url: string): string | null => {
   }
 };
 
+// Fetch video metadata from noembed
+const fetchVideoInfo = async (videoId: string): Promise<Partial<Track>> => {
+  try {
+    const response = await fetch(
+      `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`
+    );
+    const data = await response.json();
+    
+    return {
+      title: data.title || 'Título desconocido',
+      artist: data.author_name || undefined,
+      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+    };
+  } catch {
+    return {
+      title: 'Título desconocido',
+      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+    };
+  }
+};
+
 // YouTube player states
 const YT_STATES: Record<number, string> = {
   [-1]: 'UNSTARTED',
@@ -33,14 +55,15 @@ const YT_STATES: Record<number, string> = {
 };
 
 const Home: React.FC = () => {
-  const [input, setInput] = useState('');
-  const [playlist, setPlaylist] = useState<string[]>([]);
+  const [playlist, setPlaylist] = useState<Track[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('A');
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(60);
   const [triggerVolume, setTriggerVolume] = useState(70);
+  const [skipIntroSeconds, setSkipIntroSeconds] = useState(2);
   const [playersReady, setPlayersReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isAddingTrack, setIsAddingTrack] = useState(false);
   
   // Debug state
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -60,11 +83,12 @@ const Home: React.FC = () => {
   const readyCount = useRef(0);
 
   // Refs to track current state in callbacks
-  const playlistRef = useRef<string[]>([]);
+  const playlistRef = useRef<Track[]>([]);
   const indexRef = useRef(0);
   const activeDeckRef = useRef<'A' | 'B'>('A');
-  const crossfadeSecondsRef = useRef(6);
+  const crossfadeSecondsRef = useRef(60);
   const triggerVolumeRef = useRef(70);
+  const skipIntroSecondsRef = useRef(2);
   const isFading = useRef(false);
   const preloadedRef = useRef(false);
 
@@ -81,6 +105,7 @@ const Home: React.FC = () => {
   useEffect(() => { activeDeckRef.current = activeDeck; }, [activeDeck]);
   useEffect(() => { crossfadeSecondsRef.current = crossfadeSeconds; }, [crossfadeSeconds]);
   useEffect(() => { triggerVolumeRef.current = triggerVolume; }, [triggerVolume]);
+  useEffect(() => { skipIntroSecondsRef.current = skipIntroSeconds; }, [skipIntroSeconds]);
 
   // Debug timer to update deck states
   useEffect(() => {
@@ -209,10 +234,11 @@ const Home: React.FC = () => {
 
     if (!inactivePlayer?.cueVideoById) return;
 
-    log(`📥 Precargando track ${nextIdx + 1} en Deck ${inactiveDeck}`);
+    const nextTrack = playlistRef.current[nextIdx];
+    log(`📥 Precargando track ${nextIdx + 1} en Deck ${inactiveDeck}: ${nextTrack.title}`);
     
     // cueVideoById loads without playing
-    inactivePlayer.cueVideoById(playlistRef.current[nextIdx]);
+    inactivePlayer.cueVideoById(nextTrack.youtubeId);
     inactivePlayer.setVolume(0);
     preloadedRef.current = true;
   }, [log]);
@@ -267,7 +293,8 @@ const Home: React.FC = () => {
     }
 
     isFading.current = true;
-    log(`🔄 Crossfade: Track ${indexRef.current + 1} → Track ${nextIdx + 1} (trigger: ${triggerVolumeRef.current}%)`);
+    const nextTrack = playlistRef.current[nextIdx];
+    log(`🔄 Crossfade: Track ${indexRef.current + 1} → Track ${nextIdx + 1} "${nextTrack.title}" (trigger: ${triggerVolumeRef.current}%)`);
 
     const currentDeck = activeDeckRef.current;
     const fromPlayer = currentDeck === 'A' ? deckARef.current : deckBRef.current;
@@ -277,10 +304,11 @@ const Home: React.FC = () => {
     // If not preloaded, load now (fallback)
     if (!preloadedRef.current) {
       log(`⚠ Track no precargado, cargando ahora en Deck ${toDeck}`);
-      toPlayer.loadVideoById(playlistRef.current[nextIdx]);
+      toPlayer.loadVideoById(nextTrack.youtubeId, skipIntroSecondsRef.current);
     } else {
-      // Start playback of the preloaded (cued) video
-      log(`▶ Iniciando reproducción en Deck ${toDeck}`);
+      // Start playback of the preloaded (cued) video with skip intro
+      log(`▶ Iniciando reproducción en Deck ${toDeck} (skip ${skipIntroSecondsRef.current}s)`);
+      toPlayer.seekTo(skipIntroSecondsRef.current, true);
       toPlayer.playVideo();
     }
     
@@ -303,6 +331,13 @@ const Home: React.FC = () => {
     fadeTimer.current = setInterval(() => {
       step++;
 
+      // Check if incoming player is buffering - pause fade if so
+      const toPlayerState = toPlayer.getPlayerState?.() ?? -1;
+      if (toPlayerState === 3) { // BUFFERING
+        log('⏸ Pausando fade - buffering');
+        return; // Skip this step, don't increment
+      }
+
       // Progress ratio from 0 to 1
       const t = step / totalSteps;
 
@@ -321,9 +356,16 @@ const Home: React.FC = () => {
         // Entrante: 0% → 100%
         const phase2Progress = (t - triggerPoint) / (1 - triggerPoint);
         
-        // Equal-power curves: cos para saliente, sin para entrante
-        fadeOutVol = Math.cos(phase2Progress * Math.PI / 2) * triggerVol;
-        fadeInVol = Math.sin(phase2Progress * Math.PI / 2) * 100;
+        // Only start fade-in if incoming player is actually PLAYING
+        if (toPlayerState !== 1) {
+          // Not playing yet, maintain volumes
+          fadeOutVol = triggerVol;
+          fadeInVol = 0;
+        } else {
+          // Equal-power curves: cos para saliente, sin para entrante
+          fadeOutVol = Math.cos(phase2Progress * Math.PI / 2) * triggerVol;
+          fadeInVol = Math.sin(phase2Progress * Math.PI / 2) * 100;
+        }
       }
 
       fromPlayer.setVolume(Math.round(fadeOutVol));
@@ -362,27 +404,75 @@ const Home: React.FC = () => {
     }, 100);
   }, [startMonitoring, log]);
 
-  /* ================= START PLAYBACK ================= */
+  /* ================= ADD TRACK TO QUEUE ================= */
 
-  const startAutoDJ = useCallback(() => {
-    // Parse playlist from input
-    const ids = input
-      .split('\n')
-      .map(extractVideoId)
-      .filter((v): v is string => Boolean(v));
-
-    if (!ids.length) {
-      log('⚠ No se encontraron URLs válidas');
+  const addTrackToQueue = useCallback(async (url: string) => {
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+      log('⚠ URL inválida');
       return;
     }
 
-    log(`🎵 Iniciando Auto-DJ con ${ids.length} tracks`);
+    // Check for duplicates
+    if (playlistRef.current.some(t => t.youtubeId === videoId)) {
+      log('⚠ Track ya está en la cola');
+      return;
+    }
 
-    // Reset state
-    setPlaylist(ids);
-    playlistRef.current = ids;
-    setCurrentIndex(0);
-    indexRef.current = 0;
+    setIsAddingTrack(true);
+    
+    try {
+      const info = await fetchVideoInfo(videoId);
+      const newTrack: Track = {
+        id: `${videoId}-${Date.now()}`,
+        youtubeId: videoId,
+        source: 'youtube',
+        title: info.title || 'Sin título',
+        artist: info.artist,
+        thumbnail: info.thumbnail,
+      };
+
+      setPlaylist(prev => [...prev, newTrack]);
+      log(`➕ Track agregado: ${newTrack.title}`);
+
+      // If this is the first track and not playing, start playback
+      if (playlistRef.current.length === 0 && playersReady && !isPlaying) {
+        setTimeout(() => {
+          startPlaybackFromIndex(0);
+        }, 100);
+      }
+    } catch (error) {
+      log('⚠ Error al agregar track');
+    } finally {
+      setIsAddingTrack(false);
+    }
+  }, [playersReady, isPlaying, log]);
+
+  /* ================= REMOVE TRACK FROM QUEUE ================= */
+
+  const removeTrackFromQueue = useCallback((trackId: string) => {
+    const trackIndex = playlistRef.current.findIndex(t => t.id === trackId);
+    if (trackIndex === -1) return;
+
+    // Don't remove currently playing or past tracks
+    if (trackIndex <= indexRef.current) {
+      log('⚠ No se puede eliminar el track actual o pasado');
+      return;
+    }
+
+    setPlaylist(prev => prev.filter(t => t.id !== trackId));
+    log(`🗑 Track eliminado`);
+  }, [log]);
+
+  /* ================= START PLAYBACK ================= */
+
+  const startPlaybackFromIndex = useCallback((startIndex: number) => {
+    if (playlistRef.current.length === 0) return;
+
+    log(`🎵 Iniciando playback desde track ${startIndex + 1}`);
+
+    setCurrentIndex(startIndex);
+    indexRef.current = startIndex;
     setActiveDeck('A');
     activeDeckRef.current = 'A';
     isFading.current = false;
@@ -393,19 +483,14 @@ const Home: React.FC = () => {
     clearInterval(monitorTimer.current);
     clearInterval(fadeTimer.current);
 
-    // Start playback on Deck A
-    const startPlayback = () => {
-      if (deckARef.current && typeof deckARef.current.loadVideoById === 'function') {
-        log('▶ Cargando primer track en Deck A');
-        deckARef.current.loadVideoById(ids[0]);
-        deckARef.current.setVolume(100);
-      } else {
-        setTimeout(startPlayback, 100);
-      }
-    };
-
-    startPlayback();
-  }, [input, log]);
+    const track = playlistRef.current[startIndex];
+    
+    if (deckARef.current && typeof deckARef.current.loadVideoById === 'function') {
+      log(`▶ Cargando track en Deck A: ${track.title}`);
+      deckARef.current.loadVideoById(track.youtubeId, skipIntroSecondsRef.current);
+      deckARef.current.setVolume(100);
+    }
+  }, [log]);
 
   /* ================= UI ================= */
 
@@ -420,6 +505,8 @@ const Home: React.FC = () => {
     return formatTime(state.duration - state.time);
   };
 
+  const currentTrack = playlist[currentIndex];
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -429,115 +516,128 @@ const Home: React.FC = () => {
           onCrossfadeDurationChange={setCrossfadeSeconds}
           triggerVolume={triggerVolume}
           onTriggerVolumeChange={setTriggerVolume}
+          skipIntroSeconds={skipIntroSeconds}
+          onSkipIntroSecondsChange={setSkipIntroSeconds}
         />
       </div>
 
-      <Textarea
-        rows={5}
-        placeholder="Pegá una URL de YouTube por línea"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-      />
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+        {/* Left: Decks */}
+        <div className="space-y-6">
+          {/* Status bar */}
+          <div className="flex gap-2 items-center flex-wrap">
+            {!playersReady && (
+              <span className="text-sm text-muted-foreground">
+                Cargando players...
+              </span>
+            )}
+            {isPlaying && currentTrack && (
+              <span className="text-sm text-muted-foreground">
+                Track {currentIndex + 1} de {playlist.length}: <span className="text-foreground font-medium">{currentTrack.title}</span>
+              </span>
+            )}
+            {isFading.current && (
+              <span className="text-sm text-primary font-medium">
+                🔄 Crossfade: {fadeProgress}%
+              </span>
+            )}
+            {nextTrackPreloaded && !isFading.current && (
+              <span className="text-sm text-green-500">
+                ✓ Siguiente precargado
+              </span>
+            )}
+          </div>
 
-      <div className="flex gap-2 items-center flex-wrap">
-        <Button onClick={startAutoDJ} disabled={!playersReady || !input.trim()}>
-          ▶ Play Auto-DJ
-        </Button>
-        {isPlaying && (
-          <span className="text-sm text-muted-foreground">
-            Track {currentIndex + 1} de {playlist.length}
-          </span>
-        )}
-        {isFading.current && (
-          <span className="text-sm text-primary font-medium">
-            🔄 Crossfade: {fadeProgress}%
-          </span>
-        )}
-        {nextTrackPreloaded && !isFading.current && (
-          <span className="text-sm text-green-500">
-            ✓ Siguiente precargado
-          </span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {(['A', 'B'] as const).map((deck) => {
-          const deckState = deck === 'A' ? deckAState : deckBState;
-          const isActive = activeDeck === deck;
-          
-          return (
-            <div
-              key={deck}
-              className={cn(
-                'rounded-xl border p-3 space-y-2',
-                isActive && isPlaying
-                  ? 'border-green-500 bg-green-500/5'
-                  : 'border-muted'
-              )}
-            >
-              <div className="flex justify-between items-center">
-                <div className="font-semibold">
-                  Deck {deck}{' '}
-                  {isActive && isPlaying && (
-                    <span className="text-green-500">(ON AIR)</span>
-                  )}
-                </div>
-                <div className="text-xs font-mono text-muted-foreground">
-                  {deckState.state}
-                </div>
-              </div>
-
-              <div className="aspect-video bg-black rounded overflow-hidden">
+          {/* Decks */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {(['A', 'B'] as const).map((deck) => {
+              const deckState = deck === 'A' ? deckAState : deckBState;
+              const isActive = activeDeck === deck;
+              
+              return (
                 <div
-                  ref={deck === 'A' ? containerARef : containerBRef}
-                  className="w-full h-full"
-                />
-              </div>
+                  key={deck}
+                  className={cn(
+                    'rounded-xl border p-3 space-y-2',
+                    isActive && isPlaying
+                      ? 'border-green-500 bg-green-500/5'
+                      : 'border-muted'
+                  )}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="font-semibold">
+                      Deck {deck}{' '}
+                      {isActive && isPlaying && (
+                        <span className="text-green-500">(ON AIR)</span>
+                      )}
+                    </div>
+                    <div className="text-xs font-mono text-muted-foreground">
+                      {deckState.state}
+                    </div>
+                  </div>
 
-              {/* Deck stats */}
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="bg-muted/50 rounded p-2">
-                  <div className="text-muted-foreground">Tiempo</div>
-                  <div className="font-mono">{formatTime(deckState.time)}</div>
+                  <div className="aspect-video bg-black rounded overflow-hidden">
+                    <div
+                      ref={deck === 'A' ? containerARef : containerBRef}
+                      className="w-full h-full"
+                    />
+                  </div>
+
+                  {/* Deck stats */}
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground">Tiempo</div>
+                      <div className="font-mono">{formatTime(deckState.time)}</div>
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground">Restante</div>
+                      <div className="font-mono">{getTimeRemaining(deckState)}</div>
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground">Volumen</div>
+                      <div className="font-mono">{Math.round(deckState.volume)}%</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-muted/50 rounded p-2">
-                  <div className="text-muted-foreground">Restante</div>
-                  <div className="font-mono">{getTimeRemaining(deckState)}</div>
-                </div>
-                <div className="bg-muted/50 rounded p-2">
-                  <div className="text-muted-foreground">Volumen</div>
-                  <div className="font-mono">{Math.round(deckState.volume)}%</div>
-                </div>
-              </div>
+              );
+            })}
+          </div>
+
+          {/* Debug panel */}
+          <div className="border rounded-lg p-3 bg-muted/30">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-semibold text-sm">Debug Log</h3>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setDebugLogs([])}
+                className="h-6 text-xs"
+              >
+                Limpiar
+              </Button>
             </div>
-          );
-        })}
-      </div>
+            <div className="h-32 overflow-y-auto font-mono text-xs space-y-0.5">
+              {debugLogs.length === 0 ? (
+                <div className="text-muted-foreground">Sin logs aún...</div>
+              ) : (
+                debugLogs.map((logEntry, i) => (
+                  <div key={i} className="text-muted-foreground">
+                    {logEntry}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
 
-      {/* Debug panel */}
-      <div className="border rounded-lg p-3 bg-muted/30">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="font-semibold text-sm">Debug Log</h3>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setDebugLogs([])}
-            className="h-6 text-xs"
-          >
-            Limpiar
-          </Button>
-        </div>
-        <div className="h-32 overflow-y-auto font-mono text-xs space-y-0.5">
-          {debugLogs.length === 0 ? (
-            <div className="text-muted-foreground">Sin logs aún...</div>
-          ) : (
-            debugLogs.map((logEntry, i) => (
-              <div key={i} className="text-muted-foreground">
-                {logEntry}
-              </div>
-            ))
-          )}
-        </div>
+        {/* Right: Live Queue */}
+        <LiveQueue
+          tracks={playlist}
+          currentIndex={currentIndex}
+          onRemoveTrack={removeTrackFromQueue}
+          onAddTrack={addTrackToQueue}
+          isLoading={isAddingTrack}
+        />
       </div>
     </div>
   );
