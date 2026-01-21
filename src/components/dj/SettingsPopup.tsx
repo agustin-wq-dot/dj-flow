@@ -15,6 +15,8 @@ interface SettingsPopupProps {
   onCrossfadeDurationChange: (value: number) => void;
   triggerVolume: number;
   onTriggerVolumeChange: (value: number) => void;
+  skipIntroSeconds: number;
+  onSkipIntroSecondsChange: (value: number) => void;
 }
 
 const SettingsPopup: React.FC<SettingsPopupProps> = ({
@@ -22,6 +24,8 @@ const SettingsPopup: React.FC<SettingsPopupProps> = ({
   onCrossfadeDurationChange,
   triggerVolume,
   onTriggerVolumeChange,
+  skipIntroSeconds,
+  onSkipIntroSecondsChange,
 }) => {
   return (
     <Dialog>
@@ -84,6 +88,31 @@ const SettingsPopup: React.FC<SettingsPopupProps> = ({
               ℹ️ El siguiente track empieza a sonar fuerte cuando el deck saliente 
               baja a este volumen durante el crossfade. Valores más altos = 
               transición más temprana.
+            </p>
+          </div>
+
+          {/* Skip Intro Seconds */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="text-sm font-medium">Skip Intro</label>
+              <span className="text-sm text-muted-foreground font-mono">
+                {skipIntroSeconds}s
+              </span>
+            </div>
+            <Slider
+              min={0}
+              max={5}
+              step={0.5}
+              value={[skipIntroSeconds]}
+              onValueChange={([v]) => onSkipIntroSecondsChange(v)}
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>0s</span>
+              <span>5s</span>
+            </div>
+            <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+              ℹ️ Salta los primeros segundos de cada track para evitar intros 
+              silenciosas en videos de YouTube.
             </p>
           </div>
         </div>

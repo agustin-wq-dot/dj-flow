@@ -6,4 +6,5 @@ export interface Track {
   videoId?: string; // Alias for youtubeId for compatibility
   thumbnail?: string;
   duration?: number;
+  artist?: string; // Channel name from YouTube
 }
