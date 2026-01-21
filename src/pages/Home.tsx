@@ -521,8 +521,7 @@ const Home: React.FC = () => {
         />
       </div>
 
-<!--      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6"> -->
-      <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
         {/* Left: Decks */}
         <div className="space-y-6">
           {/* Status bar */}
