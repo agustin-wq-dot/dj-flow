@@ -98,23 +98,41 @@ export const ManualDeck: React.FC<ManualDeckProps> = ({
 
   const handleEqChange = useCallback((eq: EQSettings) => {
     onStateChange({ eq });
-    // Note: EQ would need Web Audio API for real implementation
-  }, [onStateChange]);
+    // Note: Real EQ requires Web Audio API - YouTube IFrame API doesn't support it
+    console.log(`[Deck ${deckId}] EQ changed:`, eq, '(visual only - YT API limitation)');
+  }, [onStateChange, deckId]);
 
   const handleTrimChange = useCallback((trim: number) => {
     onStateChange({ trim });
   }, [onStateChange]);
 
+  // BPM change calculates new playback rate relative to base BPM (120)
+  const baseBpm = 120;
   const handleBpmChange = useCallback((bpm: number) => {
-    onStateChange({ bpm: Math.max(60, Math.min(180, bpm)) });
-  }, [onStateChange]);
+    const clampedBpm = Math.max(60, Math.min(180, bpm));
+    const newRate = clampedBpm / baseBpm;
+    onStateChange({ bpm: clampedBpm, playbackRate: newRate });
+    if (deck.isReady) {
+      deck.setPlaybackRate(newRate);
+    }
+  }, [onStateChange, deck]);
+
+  // Pitch/PlaybackRate change also updates BPM
+  const handlePlaybackRateChange = useCallback((rate: number) => {
+    const newBpm = baseBpm * rate;
+    onStateChange({ playbackRate: rate, bpm: newBpm });
+    if (deck.isReady) {
+      deck.setPlaybackRate(rate);
+    }
+  }, [onStateChange, deck]);
 
   // Update volume with trim applied - only when player is ready
   React.useEffect(() => {
     if (!deck.isReady) return;
     const finalVolume = state.volume * state.trim * effectiveVolume;
     deck.setVolume(finalVolume);
-  }, [state.volume, state.trim, effectiveVolume, deck.isReady, deck]);
+    console.log(`[Deck ${deckId}] Volume update: vol=${state.volume.toFixed(2)}, trim=${state.trim.toFixed(2)}, eff=${effectiveVolume.toFixed(2)}, final=${finalVolume.toFixed(2)}`);
+  }, [state.volume, state.trim, effectiveVolume, deck.isReady, deck, deckId]);
 
   return (
     <div className={cn(
@@ -193,7 +211,7 @@ export const ManualDeck: React.FC<ManualDeckProps> = ({
         onPause={deck.pause}
         onSeek={deck.seekTo}
         onVolumeChange={(v) => onStateChange({ volume: v })}
-        onPlaybackRateChange={deck.setPlaybackRate}
+        onPlaybackRateChange={handlePlaybackRateChange}
         onToggleLoop={deck.toggleLoop}
         onSetCue={handleSetCue}
         onJumpToCue={handleJumpToCue}
