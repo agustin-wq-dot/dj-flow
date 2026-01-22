@@ -109,11 +109,12 @@ export const ManualDeck: React.FC<ManualDeckProps> = ({
     onStateChange({ bpm: Math.max(60, Math.min(180, bpm)) });
   }, [onStateChange]);
 
-  // Update volume with trim applied
+  // Update volume with trim applied - only when player is ready
   React.useEffect(() => {
+    if (!deck.isReady) return;
     const finalVolume = state.volume * state.trim * effectiveVolume;
     deck.setVolume(finalVolume);
-  }, [state.volume, state.trim, effectiveVolume, deck]);
+  }, [state.volume, state.trim, effectiveVolume, deck.isReady, deck]);
 
   return (
     <div className={cn(
