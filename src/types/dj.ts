@@ -10,6 +10,19 @@ export interface LoopSettings {
   duration: number;
 }
 
+export interface CuePoint {
+  id: string;
+  time: number;
+  color: string;
+  label?: string;
+}
+
+export interface EQSettings {
+  high: number;  // -12 to +12 dB
+  mid: number;
+  low: number;
+}
+
 export interface DeckState {
   track: Track | null;
   isReady: boolean;
@@ -19,6 +32,10 @@ export interface DeckState {
   volume: number;
   playbackRate: number;
   loop: LoopSettings | null;
+  bpm: number;
+  cuePoints: CuePoint[];
+  eq: EQSettings;
+  trim: number;  // 0 to 2 (1 = normal)
 }
 
 export const createEmptyDeckState = (): DeckState => ({
@@ -30,6 +47,10 @@ export const createEmptyDeckState = (): DeckState => ({
   volume: 1,
   playbackRate: 1,
   loop: null,
+  bpm: 120,
+  cuePoints: [],
+  eq: { high: 0, mid: 0, low: 0 },
+  trim: 1,
 });
 
 export const extractVideoId = (url: string): string | null => {
