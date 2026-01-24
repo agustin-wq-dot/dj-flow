@@ -80,13 +80,20 @@ export const useDeck = ({ deckId, onStateChange, onEnded }: UseDeckOptions) => {
     }
   }, [getCurrentTime, onStateChange]);
 
+  // Safe seekTo with ready guard
+  const safeSeekTo = useCallback((seconds: number) => {
+    if (isReady) {
+      seekTo(seconds);
+    }
+  }, [isReady, seekTo]);
+
   return {
     containerId,
     isReady,
     loadTrack,
     play,
     pause,
-    seekTo,
+    seekTo: safeSeekTo,
     setVolume,
     setPlaybackRate,
     toggleLoop,

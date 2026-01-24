@@ -1,9 +1,10 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, SkipForward, Repeat, Circle } from 'lucide-react';
+import { Play, Pause, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { DeckState, CuePoint, EQSettings } from '@/types/dj';
+import { DeckState, EQSettings } from '@/types/dj';
+import { BpmTapper } from './BpmTapper';
 
 interface DeckControlsProps {
   deckId: 'A' | 'B';
@@ -140,39 +141,15 @@ export const DeckControls: React.FC<DeckControlsProps> = ({
         </div>
       </div>
 
-      {/* BPM Control */}
+      {/* BPM Control with Tap */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">BPM</span>
-          <span className="text-lg font-bold tabular-nums">{state.bpm.toFixed(1)}</span>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={() => onBpmChange(state.bpm - 1)}
-            className="h-8"
-          >
-            -1
-          </Button>
-          <Slider
-            value={[state.bpm]}
-            min={60}
-            max={180}
-            step={0.1}
-            onValueChange={([val]) => onBpmChange(val)}
-            className="flex-1"
-          />
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={() => onBpmChange(state.bpm + 1)}
-            className="h-8"
-          >
-            +1
-          </Button>
-        </div>
-        {/* Tempo/Pitch (playback rate) */}
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tempo</span>
+        <BpmTapper 
+          deckId={deckId}
+          currentBpm={state.bpm}
+          onBpmChange={onBpmChange}
+        />
+        {/* Pitch (playback rate) */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground w-14">Pitch:</span>
           <Slider

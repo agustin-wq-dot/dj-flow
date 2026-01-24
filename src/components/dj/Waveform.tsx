@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { CuePoint } from '@/types/dj';
 
@@ -43,13 +43,20 @@ export const Waveform: React.FC<WaveformProps> = ({
     return result;
   }, [duration]);
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (duration <= 0) return;
+    
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percent = x / rect.width;
-    const newTime = percent * duration;
-    onSeek(Math.max(0, Math.min(duration, newTime)));
-  };
+    const newTime = Math.max(0, Math.min(duration - 0.1, percent * duration));
+    
+    console.log(`[Waveform] Seek: ${newTime.toFixed(2)}s (${(percent * 100).toFixed(1)}%)`);
+    onSeek(newTime);
+  }, [duration, onSeek]);
 
   return (
     <div className="space-y-1">
