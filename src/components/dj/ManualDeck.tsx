@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Upload, Music2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DeckControls } from './DeckControls';
+import { Waveform } from './Waveform';
 import { useDeck } from '@/hooks/useDeck';
 
 interface ManualDeckProps {
@@ -202,6 +203,18 @@ export const ManualDeck: React.FC<ManualDeckProps> = ({
           </div>
         </div>
       )}
+
+      {/* Waveform Display */}
+      <Waveform
+        deckId={deckId}
+        currentTime={state.currentTime}
+        duration={state.duration}
+        isPlaying={state.isPlaying}
+        cuePoints={state.cuePoints}
+        loopStart={state.loop?.start}
+        loopEnd={state.loop?.end}
+        onSeek={deck.seekTo}
+      />
 
       {/* Deck Controls */}
       <DeckControls
