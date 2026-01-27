@@ -1,15 +1,29 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { DeckState, createEmptyDeckState } from '@/types/dj';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { ManualDeck } from '@/components/dj/ManualDeck';
+import { KeyboardShortcutsLegend } from '@/components/dj/KeyboardShortcutsLegend';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { ArrowLeft, Headphones } from 'lucide-react';
+
+// Refs type for deck controls
+interface DeckControls {
+  play: () => void;
+  pause: () => void;
+  jumpToCue: (index: number) => void;
+  adjustPitch: (delta: number) => void;
+}
 
 export default function Manual() {
   const [deckAState, setDeckAState] = useState<DeckState>(createEmptyDeckState());
   const [deckBState, setDeckBState] = useState<DeckState>(createEmptyDeckState());
   const [crossfader, setCrossfader] = useState(0.5);
+
+  // Refs for deck control functions
+  const deckAControlsRef = useRef<DeckControls | null>(null);
+  const deckBControlsRef = useRef<DeckControls | null>(null);
 
   const computeVolume = (deck: 'A' | 'B') => {
     // Equal power crossfade
@@ -18,6 +32,29 @@ export default function Manual() {
     }
     return Math.sin((crossfader) * Math.PI / 2);
   };
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    deckA: {
+      play: () => deckAControlsRef.current?.play(),
+      pause: () => deckAControlsRef.current?.pause(),
+      isPlaying: deckAState.isPlaying,
+      jumpToCue: (index) => deckAControlsRef.current?.jumpToCue(index),
+      pitchUp: () => deckAControlsRef.current?.adjustPitch(0.01),
+      pitchDown: () => deckAControlsRef.current?.adjustPitch(-0.01),
+    },
+    deckB: {
+      play: () => deckBControlsRef.current?.play(),
+      pause: () => deckBControlsRef.current?.pause(),
+      isPlaying: deckBState.isPlaying,
+      jumpToCue: (index) => deckBControlsRef.current?.jumpToCue(index),
+      pitchUp: () => deckBControlsRef.current?.adjustPitch(0.01),
+      pitchDown: () => deckBControlsRef.current?.adjustPitch(-0.01),
+    },
+    crossfaderLeft: () => setCrossfader(0),
+    crossfaderRight: () => setCrossfader(1),
+    crossfaderCenter: () => setCrossfader(0.5),
+  });
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -34,6 +71,7 @@ export default function Manual() {
             <h1 className="text-2xl font-bold">Manual DJ</h1>
           </div>
         </div>
+        <KeyboardShortcutsLegend />
       </div>
 
       {/* Decks */}
@@ -43,12 +81,14 @@ export default function Manual() {
           state={deckAState}
           onStateChange={(state) => setDeckAState(prev => ({ ...prev, ...state }))}
           effectiveVolume={computeVolume('A')}
+          controlsRef={deckAControlsRef}
         />
         <ManualDeck
           deckId="B"
           state={deckBState}
           onStateChange={(state) => setDeckBState(prev => ({ ...prev, ...state }))}
           effectiveVolume={computeVolume('B')}
+          controlsRef={deckBControlsRef}
         />
       </div>
 
