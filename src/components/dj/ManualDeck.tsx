@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useImperativeHandle } from 'react';
 import { DeckState, CuePoint, EQSettings, extractVideoId } from '@/types/dj';
 import { Track } from '@/types/Track';
 import { Button } from '@/components/ui/button';
@@ -9,11 +9,20 @@ import { DeckControls } from './DeckControls';
 import { Waveform } from './Waveform';
 import { useDeck } from '@/hooks/useDeck';
 
+// Exposed controls interface for keyboard shortcuts
+export interface DeckControlsRef {
+  play: () => void;
+  pause: () => void;
+  jumpToCue: (index: number) => void;
+  adjustPitch: (delta: number) => void;
+}
+
 interface ManualDeckProps {
   deckId: 'A' | 'B';
   state: DeckState;
   onStateChange: (state: Partial<DeckState>) => void;
   effectiveVolume: number;
+  controlsRef?: React.MutableRefObject<DeckControlsRef | null>;
 }
 
 export const ManualDeck: React.FC<ManualDeckProps> = ({
@@ -21,6 +30,7 @@ export const ManualDeck: React.FC<ManualDeckProps> = ({
   state,
   onStateChange,
   effectiveVolume,
+  controlsRef,
 }) => {
   const [urlInput, setUrlInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -127,8 +137,39 @@ export const ManualDeck: React.FC<ManualDeckProps> = ({
     }
   }, [onStateChange, deck]);
 
+  // Adjust pitch by delta (for keyboard shortcuts)
+  const adjustPitch = useCallback((delta: number) => {
+    const newRate = Math.max(0.5, Math.min(1.5, state.playbackRate + delta));
+    handlePlaybackRateChange(newRate);
+  }, [state.playbackRate, handlePlaybackRateChange]);
+
+  // Jump to cue by index (for keyboard shortcuts)
+  const jumpToCueByIndex = useCallback((index: number) => {
+    const cue = state.cuePoints[index];
+    if (cue) {
+      deck.seekTo(cue.time);
+    }
+  }, [state.cuePoints, deck]);
+
+  // Expose controls for keyboard shortcuts
+  useEffect(() => {
+    if (controlsRef) {
+      controlsRef.current = {
+        play: deck.play,
+        pause: deck.pause,
+        jumpToCue: jumpToCueByIndex,
+        adjustPitch,
+      };
+    }
+    return () => {
+      if (controlsRef) {
+        controlsRef.current = null;
+      }
+    };
+  }, [controlsRef, deck.play, deck.pause, jumpToCueByIndex, adjustPitch]);
+
   // Update volume with trim applied - only when player is ready
-  React.useEffect(() => {
+  useEffect(() => {
     if (!deck.isReady) return;
     const finalVolume = state.volume * state.trim * effectiveVolume;
     deck.setVolume(finalVolume);
